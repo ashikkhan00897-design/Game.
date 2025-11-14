@@ -1,0 +1,547 @@
+<!doctype html>
+<html lang="bn">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no"/>
+  <title>Battle Blitz Royale — Single File</title>
+  <meta name="theme-color" content="#0e0e0f"/>
+  <style>
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:#0d0e0f;color:#e9e9ea;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,Helvetica,sans-serif}
+#game{display:block;width:100vw;height:100vh;touch-action:none;background:radial-gradient(ellipse at center, #0f1520 0%, #0d0e0f 60%)}
+#ui{position:fixed;inset:0;pointer-events:none}
+#topbar{position:absolute;left:0;right:0;top:0;display:flex;gap:.5rem;align-items:center;padding:.5rem .6rem;background:linear-gradient(#0008,#0000)}
+#topbar button{pointer-events:auto;background:#1c1c22;border:1px solid #2f2f36;color:#fff;padding:.4rem .6rem;border-radius:.45rem;font-weight:600}
+#topbar button:active{transform:scale(.98)}
+#info{margin-left:auto;opacity:.85}
+#hud{position:absolute;left:.6rem;bottom:8.8rem;display:grid;gap:.2rem;background:#0008;padding:.4rem .55rem;border:1px solid #2f2f36;border-radius:.5rem;backdrop-filter:blur(2px);pointer-events:none}
+#controls{position:absolute;left:0;right:0;bottom:.5rem;height:8.2rem;pointer-events:none}
+.joy{position:absolute;width:7.5rem;height:7.5rem;border-radius:50%;border:1px solid #2e2e36;background:#17171caa;left:.6rem;bottom:.5rem;pointer-events:auto;touch-action:none}
+#joyR{left:auto;right:.6rem}
+.joy .knob{position:absolute;left:50%;top:50%;width:3.5rem;height:3.5rem;border-radius:50%;transform:translate(-50%,-50%);background:#2a2a33;border:1px solid #3b3b42}
+#buttons{position:absolute;right:50%;transform:translateX(50%);bottom:0;display:flex;gap:.4rem;pointer-events:auto}
+#buttons button{background:#22242a;border:1px solid #34363d;color:#fff;padding:.5rem .8rem;border-radius:.5rem;font-weight:700}
+.panel{position:fixed;inset:0;display:none;flex-direction:column;justify-content:center;align-items:center;background:#000b;backdrop-filter:blur(2px);padding:1rem}
+.panel.small .row,.panel.small .col{display:block}
+.panel .row{display:flex;gap:1rem;flex-wrap:wrap}
+.panel .col{flex:1 1 16rem;display:flex;flex-direction:column;gap:.5rem;min-width:16rem}
+.panel textarea{width:100%;min-height:7rem;background:#101217;color:#e9e9ea;border:1px solid #2a2c33;border-radius:.4rem;padding:.4rem}
+.panel h3,h4{margin:.3rem 0}
+.panel .close{background:#23252d;border:1px solid #34363d;color:#fff;padding:.5rem 1rem;border-radius:.5rem;margin-top:.5rem}
+.panel .note{opacity:.8;font-size:.95rem;max-width:50rem}
+#panelBots.small{max-width:22rem;margin:auto}
+#panelBots .close{margin-top:1rem}
+@media (min-width:900px){ #hud{bottom:1rem} }
+  </style>
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <div id="ui">
+    <div id="topbar">
+      <button id="btnPlay">▶️ খেলা</button>
+      <button id="btnBots">🤖 বট: <span id="botCount">12</span></button>
+      <button id="btnMultiplayer">🌐 মাল্টিপ্লেয়ার (বেটা)</button>
+      <button id="btnHelp">ℹ️ সাহায্য</button>
+      <span id="info"></span>
+    </div>
+
+    <div id="hud">
+      <div><b>HP:</b> <span id="hp">100</span></div>
+      <div><b>Alive:</b> <span id="alive">1</span></div>
+      <div><b>Kills:</b> <span id="kills">0</span></div>
+      <div><b>Weapon:</b> <span id="wpn">Pistol</span> | <span id="ammo">0/0</span></div>
+      <div><b>Zone:</b> <span id="zone">100%</span></div>
+    </div>
+
+    <!-- Controls -->
+    <div id="controls">
+      <div id="joyL" class="joy"><div class="knob"></div></div>
+      <div id="joyR" class="joy"><div class="knob"></div></div>
+      <div id="buttons">
+        <button id="btnReload">রিলোড</button>
+        <button id="btnSwitch">সুইচ</button>
+        <button id="btnPick">লুট</button>
+        <button id="btnMed">মেডকিট</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Panels -->
+  <div id="panelHelp" class="panel">
+    <h3>কীভাবে খেলবেন (Battle Blitz Royale)</h3>
+    <ul>
+      <li>বাম জয়স্টিক: মুভ</li>
+      <li>ডান জয়স্টিক: তাক/শুট (ডানটা টেনে রাখলেই ফায়ার হবে)</li>
+      <li>সুইচ: দু’টো অস্ত্রের মধ্যে পাল্টাও</li>
+      <li>রিলোড: ম্যাগাজিন ভরো</li>
+      <li>লুট: কাছাকাছি আইটেম তুলে নাও</li>
+      <li>ম্যাপের নীল বৃত্ত <b>সেফ জোন</b>—সময় বাড়লে ছোট হবে; বাইরে থাকলে ড্যামেজ!</li>
+      <li>মাল্টিপ্লেয়ার (বেটা): ১v১ টেস্টের জন্য <b>Manual WebRTC</b>—“Host” এ Offer কপি করে “Join” করা বন্ধুকে পাঠাও; ওর Answer কপি এনে Host‑এ পেস্ট করে Accept দাও।</li>
+    </ul>
+    <button class="close">ঠিক আছে</button>
+  </div>
+
+  <div id="panelBots" class="panel small">
+    <h3>বট সেটিংস</h3>
+    <label>সংখ্যা: <input id="inpBots" type="range" min="0" max="30" step="1" value="12"></label>
+    <div><span id="valBots">12</span> টি বট</div>
+    <button class="close">সংরক্ষণ</button>
+  </div>
+
+  <div id="panelMP" class="panel">
+    <h3>মাল্টিপ্লেয়ার (বেটা) – ম্যানুয়াল ওয়েবআরটিসি</h3>
+    <div class="row">
+      <div class="col">
+        <h4>Host</h4>
+        <button id="btnHost">Create Offer</button>
+        <textarea id="offer" readonly placeholder="Offer will appear here..."></textarea>
+      </div>
+      <div class="col">
+        <h4>Join</h4>
+        <textarea id="offerIn" placeholder="Paste host offer here"></textarea>
+        <button id="btnAnswer">Create Answer</button>
+        <textarea id="answer" readonly placeholder="Answer will appear here..."></textarea>
+      </div>
+    </div>
+    <div class="row">
+      <div class="col">
+        <h4>Paste Answer Back to Host</h4>
+        <textarea id="answerIn" placeholder="Joiner pastes the Answer to host here"></textarea>
+        <button id="btnAccept">Accept Answer (Host)</button>
+      </div>
+    </div>
+    <p class="note">⚠️ টেস্টিং মাত্র, ১–২ জনের জন্য। নেটওয়ার্ক/ব্রাউজার ভেদে কাজ নাও করতে পারে।</p>
+    <button class="close">Close</button>
+  </div>
+
+  <script>
+(() => {
+  'use strict';
+
+  // ====== Helpers ======
+  const rand = (a,b)=> a + Math.random()*(b-a);
+  const randInt = (a,b)=> Math.floor(rand(a,b+1));
+  const clamp = (v,a,b)=> Math.max(a, Math.min(b,v));
+  const dist2 = (ax,ay,bx,by)=>{ const dx=ax-bx, dy=ay-by; return dx*dx+dy*dy; };
+
+  // ====== Canvas ======
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  let DPR = 1;
+  function resize(){
+    DPR = Math.max(1, Math.min(2, window.devicePixelRatio||1));
+    canvas.width = Math.floor(window.innerWidth*DPR);
+    canvas.height = Math.floor(window.innerHeight*DPR);
+    canvas.style.width = '100vw';
+    canvas.style.height = '100vh';
+  }
+  window.addEventListener('resize', resize, {passive:true});
+
+  // ====== UI ======
+  const el = id=>document.getElementById(id);
+  const info = el('info'), hpEl = el('hp'), aliveEl = el('alive'), killsEl = el('kills'), wpnEl = el('wpn'), ammoEl = el('ammo'), zoneEl = el('zone');
+  const btnPlay = el('btnPlay'), btnBots = el('btnBots'), botCountEl = el('botCount');
+  const btnHelp = el('btnHelp'), panelHelp = el('panelHelp');
+  const panelBots = el('panelBots'), inpBots = el('inpBots'), valBots = el('valBots');
+  const panelMP = el('panelMP');
+  const btnMultiplayer = el('btnMultiplayer');
+  const btnReload = el('btnReload'), btnSwitch = el('btnSwitch'), btnPick = el('btnPick'), btnMed = el('btnMed');
+
+  const joyL = el('joyL'), joyR = el('joyR');
+
+  // Panels toggles
+  function showPanel(p){ p.style.display='flex'; }
+  function hidePanel(p){ p.style.display='none'; }
+  panelHelp.querySelector('.close').onclick = ()=> hidePanel(panelHelp);
+  panelBots.querySelector('.close').onclick = ()=> hidePanel(panelBots);
+  btnHelp.onclick = ()=> showPanel(panelHelp);
+  btnBots.onclick = ()=> showPanel(panelBots);
+  btnMultiplayer.onclick = ()=> showPanel(panelMP);
+  panelMP.querySelector('.close').onclick = ()=> hidePanel(panelMP);
+
+  // bot slider
+  valBots.textContent = inpBots.value;
+  inpBots.oninput = ()=>{ valBots.textContent = inpBots.value; botCountEl.textContent = inpBots.value; };
+
+  // ====== Game Config ======
+  const WORLD = { w: 3200, h: 3200 };  // world size
+  const PLAYER = {
+    maxHp: 100,
+    moveSpeed: 240,
+  };
+  const BULLET = { speed: 900, ttl: 1.2 };
+
+  const WEAPONS = [
+    { id:'pistol', name:'Pistol', auto:false, dmg:18, spread:0.03, rof:4, mag:12, reload:1.2, bulletSpeed:900, pellets:1 },
+    { id:'ar', name:'Rifle', auto:true, dmg:12, spread:0.04, rof:9, mag:30, reload:1.6, bulletSpeed:980, pellets:1 },
+    { id:'shotgun', name:'Shotgun', auto:false, dmg:9, spread:0.25, rof:1.2, mag:5, reload:1.8, bulletSpeed:800, pellets:6 },
+  ];
+
+  const COLORS = {
+    bg:'#0d0e0f', grass:'#12351a', wall:'#1c2128', wall2:'#28303a',
+    zone:'#0aa0ff', zoneFill:'#0aa0ff22',
+    player:'#51e3a5', enemy:'#f44', bot:'#f7b94a',
+    bullet:'#fff', loot:'#6bd6ff'
+  };
+
+  // ====== World ======
+  const walls = [];
+  function genWorld(){
+    walls.length = 0;
+    // perimeter
+    walls.push({x:0,y:0,w:WORLD.w,h:40});
+    walls.push({x:0,y:WORLD.h-40,w:WORLD.w,h:40});
+    walls.push({x:0,y:0,w:40,h:WORLD.h});
+    walls.push({x:WORLD.w-40,y:0,w:40,h:WORLD.h});
+    // random blocks
+    for (let i=0;i<60;i++){
+      const w = randInt(140, 360);
+      const h = randInt(120, 300);
+      const x = randInt(80, WORLD.w-w-80);
+      const y = randInt(80, WORLD.h-h-80);
+      walls.push({x,y,w,h});
+    }
+  }
+  function rectsOverlap(a,b){ return a.x<b.x+b.w && a.x+a.w>b.x && a.y<b.y+b.h && a.y+a.h>b.y; }
+  function collideRect(r){
+    for (const w of walls){
+      if (rectsOverlap(r, w)) return w;
+    }
+    return null;
+  }
+
+  // ====== Entities ======
+  let player, bots=[], bullets=[], drops=[], others=[];
+  let alive = 1, kills = 0;
+
+  function randSpawn(){
+    let tries=0;
+    while(tries++<5000){
+      const x = rand(200, WORLD.w-200), y=rand(200, WORLD.h-200);
+      const r = {x:x-20,y:y-20,w:40,h:40};
+      if (!collideRect(r)) return {x,y};
+    }
+    return {x:400,y:400};
+  }
+
+  function mkWeapon(id){
+    const def = WEAPONS.find(w=>w.id===id);
+    return { id:def.id, name:def.name, auto:def.auto, dmg:def.dmg, spread:def.spread, rof:def.rof, mag:def.mag, reload:def.reload, bulletSpeed:def.bulletSpeed, pellets:def.pellets, inMag:def.mag, reserve:def.mag*3 };
+  }
+
+  function newPlayer(spawn){
+    return {
+      type:'player',
+      x:spawn.x, y:spawn.y, a:0,
+      w:28, h:28,
+      hp:PLAYER.maxHp, dead:false,
+      name:'You',
+      inv:[ mkWeapon('pistol'), mkWeapon('ar') ],
+      slot:0,
+      med:1,
+      fireTimer:0,
+      reloading:false, reloadLeft:0,
+      isRemote:false
+    };
+  }
+  function newBot(){
+    const s = randSpawn();
+    return {
+      type:'bot',
+      x:s.x, y:s.y, a:rand(0,Math.PI*2),
+      w:26, h:26, hp:80, dead:false,
+      inv:[ mkWeapon(Math.random()<0.5?'pistol':'ar') ],
+      slot:0,
+      fireTimer:0,
+      target:null,
+      roamT:rand(1,3),
+      reloading:false, reloadLeft:0
+    };
+  }
+  function newDrop(kind, x,y){
+    return { kind, x, y, r:18, ttl:180 };
+  }
+
+  // ====== Joystick ======
+  function makeStick(root){
+    const knob = root.querySelector('.knob');
+    const state = {active:false, id:null, rx:0, ry:0};
+    const rect = ()=> root.getBoundingClientRect();
+    function setFrom(e){
+      const r = rect();
+      const cx = r.left + r.width/2;
+      const cy = r.top + r.height/2;
+      const x = (e.clientX||e.touches?.[0]?.clientX||cx) - cx;
+      const y = (e.clientY||e.touches?.[0]?.clientY||cy) - cy;
+      const max = r.width*0.42;
+      const d = Math.hypot(x,y);
+      const nx = (d>0? x/d:0), ny = (d>0? y/d:0);
+      const mag = clamp(d/max, 0, 1);
+      knob.style.transform = `translate(calc(-50% + ${nx*mag*max}px), calc(-50% + ${ny*mag*max}px))`;
+      state.rx = nx*mag;
+      state.ry = ny*mag;
+    }
+    function reset(){
+      knob.style.transform = 'translate(-50%,-50%)';
+      state.rx = state.ry = 0;
+    }
+    root.addEventListener('pointerdown', e=>{ state.active=true; state.id=e.pointerId; root.setPointerCapture(e.pointerId); setFrom(e); });
+    root.addEventListener('pointermove', e=>{ if (state.active && e.pointerId===state.id) setFrom(e); });
+    root.addEventListener('pointerup',   e=>{ if (e.pointerId===state.id){ state.active=false; reset(); } });
+    root.addEventListener('pointercancel', e=>{ if (e.pointerId===state.id){ state.active=false; reset(); } });
+    return state;
+  }
+  const stickL = makeStick(joyL);
+  const stickR = makeStick(joyR);
+
+  // ====== Inputs ======
+  let keys = {};
+  window.addEventListener('keydown', e=>{
+    keys[e.key]=true;
+    if (e.key==='r' || e.key==='R') doReload(player);
+    if (e.key==='q' || e.key==='Q') switchSlot(player);
+  });
+  window.addEventListener('keyup', e=>{ keys[e.key]=false; });
+
+  btnReload.onclick = ()=> doReload(player);
+  btnSwitch.onclick = ()=> switchSlot(player);
+  btnMed.onclick = ()=> useMed(player);
+  btnPick.onclick = ()=> tryPickup(player);
+
+  // ====== Zone ======
+  const zone = { cx: 1600, cy: 1600, r: 1440, t:0, shrinkEvery: 25, shrinkAmount: 140 };
+  function updateZone(dt){
+    zone.t += dt;
+    if (zone.t>=zone.shrinkEvery){
+      zone.t = 0;
+      zone.r = Math.max(240, zone.r - zone.shrinkAmount);
+    }
+  }
+  function inZone(x,y){ return dist2(x,y,zone.cx,zone.cy) <= zone.r*zone.r; }
+
+  // ====== Camera ======
+  let cam = {x:0,y:0,zoom:1};
+  function setCamera(){
+    const p = player;
+    const W = canvas.width/DPR, H = canvas.height/DPR;
+    cam.x = clamp(p.x - W/2, 0, WORLD.w - W);
+    cam.y = clamp(p.y - H/2, 0, WORLD.h - H);
+  }
+
+  // ====== Multiplayer (manual WebRTC 1v1) ======
+  let rtc = { pc:null, ch:null, isHost:false };
+  const btnHost = document.getElementById('btnHost');
+  const btnAnswer = document.getElementById('btnAnswer');
+  const btnAccept = document.getElementById('btnAccept');
+  const offer = document.getElementById('offer');
+  const offerIn = document.getElementById('offerIn');
+  const answer = document.getElementById('answer');
+  const answerIn = document.getElementById('answerIn');
+
+  function mkPC(){
+    const conf = { iceServers: [{urls:'stun:stun.l.google.com:19302'}] };
+    const pc = new RTCPeerConnection(conf);
+    pc.onicecandidate = e=>{
+      if (!e.candidate){
+        if (rtc.isHost) offer.value = btoa(JSON.stringify(pc.localDescription));
+        else answer.value = btoa(JSON.stringify(pc.localDescription));
+      }
+    };
+    pc.ondatachannel = e=>{
+      rtc.ch = e.channel;
+      hookChannel();
+    };
+    return pc;
+  }
+  function hookChannel(){
+    rtc.ch.onopen = ()=> info.textContent = 'MP: connected';
+    rtc.ch.onclose = ()=> info.textContent = 'MP: closed';
+    rtc.ch.onmessage = (e)=>{
+      try {
+        const data = JSON.parse(e.data);
+        onNet(data);
+      } catch {}
+    };
+  }
+  function netSend(obj){
+    if (rtc.ch && rtc.ch.readyState==='open') rtc.ch.send(JSON.stringify(obj));
+  }
+  btnHost.onclick = async ()=>{
+    rtc.isHost = true;
+    rtc.pc = mkPC();
+    rtc.ch = rtc.pc.createDataChannel('game');
+    hookChannel();
+    const off = await rtc.pc.createOffer();
+    await rtc.pc.setLocalDescription(off);
+  };
+  btnAnswer.onclick = async ()=>{
+    try {
+      rtc.isHost = false;
+      rtc.pc = mkPC();
+      const off = JSON.parse(atob(offerIn.value.trim()));
+      await rtc.pc.setRemoteDescription(off);
+      const ans = await rtc.pc.createAnswer();
+      await rtc.pc.setLocalDescription(ans);
+    } catch (e) { alert('Invalid offer'); }
+  };
+  btnAccept.onclick = async ()=>{
+    try {
+      const ans = JSON.parse(atob(answerIn.value.trim()));
+      await rtc.pc.setRemoteDescription(ans);
+    } catch { alert('Invalid answer'); }
+  };
+
+  function onNet(data){
+    if (data.t==='state'){
+      let op = others[0];
+      if (!op){
+        op = newPlayer(randSpawn());
+        op.isRemote = true;
+        op.name = 'Remote';
+        others[0] = op;
+      }
+      Object.assign(op, data.p);
+    } else if (data.t==='shot'){
+      bullets.push(data.b);
+    }
+  }
+
+  // ====== Core Loop ======
+  let last = performance.now(), dt=0;
+  function loop(now){
+    dt = Math.min(0.033, (now-last)/1000);
+    last = now;
+
+    if (!player || player.dead){ draw(); requestAnimationFrame(loop); return; }
+
+    updatePlayer(player, dt);
+    for (const b of bots) updateBot(b, dt);
+    for (const b of bullets) updateBullet(b, dt);
+    bullets = bullets.filter(b=>!b.dead);
+    for (const d of drops){ d.ttl -= dt; }
+    for (let i=drops.length-1;i>=0;i--){ if (drops[i].ttl<=0) drops.splice(i,1); }
+    updateZone(dt);
+    setCamera();
+
+    netSend({t:'state', p:{x:player.x,y:player.y,a:player.a,hp:player.hp,dead:player.dead,slot:player.slot, inv:player.inv}});
+
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  function startGame(){
+    genWorld();
+    player = newPlayer(randSpawn());
+    bots = [];
+    const n = Number(inpBots.value);
+    for (let i=0;i<n;i++) bots.push(newBot());
+    bullets = [];
+    drops = [];
+    others = [];
+    alive = 1+n;
+    kills = 0;
+    zone.cx = WORLD.w/2; zone.cy = WORLD.h/2; zone.r = Math.min(WORLD.w,WORLD.h)*0.45; zone.t=0;
+    updateHud();
+  }
+
+  document.getElementById('btnPlay').onclick = ()=> startGame();
+
+  // ====== Player & Combat ======
+  function updatePlayer(p, dt){
+    if (p.dead) return;
+    // movement
+    let mx = stickL.rx, my = stickL.ry;
+    if (!stickL.active){
+      mx = (keys['a']||keys['ArrowLeft']?-1:0) + (keys['d']||keys['ArrowRight']?1:0);
+      my = (keys['w']||keys['ArrowUp']?-1:0) + (keys['s']||keys['ArrowDown']?1:0);
+    }
+    let mag = Math.hypot(mx,my);
+    if (mag>1){ mx/=mag; my/=mag; mag=1; }
+    const speed = PLAYER.moveSpeed + 80*(keys['Shift']?1:0);
+    let vx = mx * speed, vy = my * speed;
+
+    // collisions move
+    const nx = p.x + vx*dt, ny = p.y + vy*dt;
+    const r = {x:nx-p.w/2,y:ny-p.h/2,w:p.w,h:p.h};
+    if (!collideRect(r)){ p.x = nx; p.y = ny; }
+    else {
+      const rx = {x:p.x+vx*dt-p.w/2,y:p.y-p.h/2,w:p.w,h:p.h};
+      const ry = {x:p.x-p.w/2,y:p.y+vy*dt-p.h/2,w:p.w,h:p.h};
+      if (!collideRect(rx)) p.x += vx*dt;
+      if (!collideRect(ry)) p.y += vy*dt;
+    }
+
+    // aim & shoot
+    let ax = stickR.rx, ay = stickR.ry;
+    if (!stickR.active){
+      ax = (keys['ArrowRight']?1:0) - (keys['ArrowLeft']?1:0);
+      ay = (keys['ArrowDown']?1:0) - (keys['ArrowUp']?1:0);
+    }
+    const amag = Math.hypot(ax,ay);
+    if (amag>0.1){ p.a = Math.atan2(ay, ax); }
+
+    // fire/reload
+    if (p.fireTimer>0) p.fireTimer -= dt;
+    if (p.reloading){
+      p.reloadLeft -= dt;
+      if (p.reloadLeft<=0){
+        const w = p.inv[p.slot];
+        const need = w.mag - w.inMag;
+        const take = Math.min(need, w.reserve);
+        w.inMag += take; w.reserve -= take;
+        p.reloading = false;
+      }
+    } else {
+      const w = p.inv[p.slot];
+      const trigger = stickR.active? (amag>0.25) : (keys[' ']||keys['Enter']);
+      if (trigger){ tryShoot(p, w, dt); }
+    }
+
+    // zone damage
+    if (!inZone(p.x,p.y)){
+      p.hp -= 8*dt;
+      if (p.hp<=0){ p.dead=true; alive--; info.textContent='তুমি বাদ!'; }
+    }
+
+    const near = drops.find(d=> dist2(d.x,d.y,p.x,p.y) < (40*40) );
+    btnPick.style.opacity = near? 1: 0.4;
+  }
+
+  function tryShoot(owner, w, dt){
+    if (owner.dead) return;
+    if (owner.fireTimer>0) return;
+    if (w.inMag<=0){ doReload(owner); return; }
+    owner.fireTimer = 1/Math.max(0.2, w.rof);
+    w.inMag--;
+    const shots = Math.max(1, w.pellets||1);
+    for (let i=0;i<shots;i++){
+      const ang = owner.a + rand(-w.spread, w.spread);
+      bullets.push({
+        x:owner.x + Math.cos(owner.a)*18,
+        y:owner.y + Math.sin(owner.a)*18,
+        vx: Math.cos(ang)*(w.bulletSpeed||BULLET.speed),
+        vy: Math.sin(ang)*(w.bulletSpeed||BULLET.speed),
+        ttl: 0.9 + rand(0,0.4),
+        dmg: w.dmg,
+        owner: owner
+      });
+    }
+    netSend({t:'shot', b: bullets[bullets.length-1] });
+  }
+
+  function doReload(p){
+    const w = p.inv[p.slot];
+    if (p.reloading) return;
+    if (w.inMag>=w.mag || w.reserve<=0) return;
+    p.reloading = true;
+    p.reloadLeft = w.reload;
+  }
+
+  function switchSlot(p){
+    if (!p) return;
+    p.slot = (p.slot+1) % p.inv.length;
+    updateHud();
+  }
+
+  functio
