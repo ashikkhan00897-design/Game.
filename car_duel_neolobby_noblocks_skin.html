@@ -1,0 +1,438 @@
+<!doctype html>
+<html lang="bn">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
+  <title>Car Duel — Bot + Neo Lobby (Mobile)</title>
+  <meta name="theme-color" content="#0a0a0a"/>
+  <style>
+    *{box-sizing:border-box}
+    html,body{margin:0;padding:0;background:#0a0a0a;color:#eee;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,Helvetica,sans-serif;overflow:hidden}
+    #game{display:block;width:100vw;height:100vh;touch-action:none;background:#000}
+
+    /* HUD */
+    #hud{position:fixed;left:.75rem;bottom:8.5rem;background:#0008;padding:.5rem .6rem;border-radius:.6rem;border:1px solid #2d2d2d;
+         pointer-events:none;font-size:.95rem;backdrop-filter:blur(2px);z-index:4}
+    #hpwrap{position:fixed;right:.75rem;bottom:8.5rem;background:#0008;padding:.5rem .6rem;border-radius:.6rem;border:1px solid #2d2d2d;
+         pointer-events:none;font-size:.95rem;backdrop-filter:blur(2px);z-index:4;min-width:190px}
+    .hpbar{width:100%;height:12px;background:#333;border-radius:8px;overflow:hidden;margin-top:4px}
+    .hpbar div{height:100%;background:linear-gradient(90deg,#2ecc71,#30d37a)}
+
+    @media (min-width:900px){ #hud,#hpwrap{bottom:1rem} }
+
+    /* Controls */
+    #controls{position:fixed;left:0;right:0;bottom:.5rem;display:flex;justify-content:space-between;padding:0 .75rem;gap:1rem;pointer-events:none;z-index:4}
+    #controls .col{display:flex;gap:.5rem}
+    .ctrl{pointer-events:auto;min-width:4.2rem;min-height:4.2rem;border-radius:1rem;border:1px solid #2e2e2e;background:#1a1a1a;color:#fff;font-size:1.2rem;font-weight:700;box-shadow:0 .3rem .8rem #000a}
+    .ctrl.big{min-width:6.2rem;min-height:6.2rem;font-size:1.3rem}
+    .ctrl:active{transform:scale(.97)}
+
+    /* Top bar */
+    #topbar{position:fixed;left:0;right:0;top:0;display:flex;gap:.5rem;align-items:center;padding:.5rem .75rem;background:linear-gradient(#0009,#0000);z-index:5}
+    #topbar button{pointer-events:auto;background:#222;border:1px solid #333;color:#fff;padding:.45rem .7rem;border-radius:.6rem;font-weight:700}
+    #status{margin-left:auto;opacity:.9}
+
+    /* Neo Lobby (inspired style, not copied) */
+    #lobby{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:10;overflow:hidden}
+    #lobby:before{content:"";position:absolute;inset:-20%;background:
+      radial-gradient(1800px 900px at 70% 20%, #1a2a5a66, transparent 60%),
+      radial-gradient(1400px 800px at 20% 80%, #5a1a2a66, transparent 55%),
+      linear-gradient(180deg, #0b0b0b, #050505);
+      filter: saturate(1.1)}
+    .glow{position:absolute;inset:0;background:
+      radial-gradient(800px 300px at 50% 10%, #ff914d22, transparent 70%),
+      radial-gradient(1200px 500px at 40% 90%, #4dd1ff22, transparent 70%);
+      animation: float 10s ease-in-out infinite alternate}
+    @keyframes float { from{transform:translateY(-10px)} to{transform:translateY(10px)} }
+
+    .panel{position:relative;width:min(94vw,580px);background:linear-gradient(180deg,#121212,#0a0a0a);
+           border:1px solid #2a2a2a;border-radius:16px;padding:18px 18px 14px;box-shadow:0 12px 50px #000c}
+    .panel h1{margin:0 0 6px;font-size:1.5rem;letter-spacing:.3px}
+    .panel .subtitle{opacity:.9;margin-bottom:10px}
+    .row{display:flex;gap:10px;margin:10px 0}
+    .col{flex:1}
+    label{display:block;font-size:.9rem;margin-bottom:6px;opacity:.9}
+    select,input[type=range],input[type=text]{width:100%;padding:11px 12px;border-radius:12px;border:1px solid #333;background:#181818;color:#fff}
+    .btn{background:linear-gradient(90deg,#ff6a3d,#ff914d);border:1px solid #ff7b4c;color:#000;
+         text-shadow:0 1px 0 #ffcfad;padding:11px 12px;border-radius:12px;font-weight:900;cursor:pointer}
+    .btn.secondary{background:#222;border-color:#333;color:#fff;text-shadow:none}
+    .tag{display:inline-block;background:#111;border:1px solid #333;color:#ddd;border-radius:999px;padding:.2rem .45rem;font-size:.8rem;margin-left:.35rem}
+  </style>
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <div id="topbar">
+    <button id="btnReset">↺ রিসেট</button>
+    <button id="btnLobby">🏠 লবি</button>
+    <span id="status">Ready</span>
+  </div>
+
+  <div id="hud">
+    <div><b>গতি:</b> <span id="speed">0</span> কিমি/ঘন্টা</div>
+    <div style="opacity:.85">⟵⟶ মোড় • গ্যাস/ব্রেক নিচে</div>
+  </div>
+  <div id="hpwrap">
+    <div><b>তুমি</b></div>
+    <div class="hpbar"><div id="hpMe" style="width:100%"></div></div>
+    <div style="margin-top:6px"><b>বট</b></div>
+    <div class="hpbar"><div id="hpBot" style="width:100%"></div></div>
+  </div>
+
+  <div id="controls">
+    <div class="col">
+      <button class="ctrl" data-act="left">⟵</button>
+      <button class="ctrl" data-act="right">⟶</button>
+    </div>
+    <div class="col">
+      <button class="ctrl big" data-act="up">গ্যাস</button>
+      <button class="ctrl" data-act="down">ব্রেক</button>
+    </div>
+  </div>
+
+  <!-- LOBBY -->
+  <div id="lobby">
+    <div class="glow"></div>
+    <div class="panel">
+      <h1>🔥 Neo Street Duel <span class="tag">Single Player</span></h1>
+      <div class="subtitle">ফ্রি ড্রাইভ বা <b>Duel vs Bot</b> — Free‑Fire vibes লবি স্টাইল।</div>
+
+      <div class="row">
+        <div class="col">
+          <label>গেম মোড</label>
+          <select id="mode">
+            <option value="free">Free Drive (Bot Roaming)</option>
+            <option value="duel">Duel vs Bot</option>
+          </select>
+        </div>
+        <div class="col">
+          <label>বট ডিফিকাল্টি</label>
+          <select id="diff">
+            <option value="easy">Easy</option>
+            <option value="normal" selected>Normal</option>
+            <option value="hard">Hard</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="col">
+          <label>ম্যাপ সিড</label>
+          <input id="seed" placeholder="যেমন: tiger42"/>
+        </div>
+        <div class="col" style="align-self:flex-end">
+          <button id="shuffle" class="btn secondary" style="width:100%">🎲 Seed</button>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:6px">
+        <button id="start" class="btn" style="flex:2">▶️ Start Game</button>
+        <button id="how" class="btn secondary" style="flex:1">ℹ️ Help</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  (()=>{
+    'use strict';
+
+    // ===== Config =====
+    const TILE=64, MAP_W=120, MAP_H=120;
+    const ROAD_PROB=0.42;       // more roads
+    // Uniform physics (no slow grass vs road)
+    const PHYS={accel:250, brake:420, maxSpeed:560, friction:130, turnRate:2.25, turnSpeedRef:320};
+    const START_HP=100;
+    const RAM_SPEED_THRESH=120, RAM_DAMAGE_K=0.04, RAM_COOLDOWN=350;
+
+    // ===== State =====
+    const cvs=document.getElementById('game'), ctx=cvs.getContext('2d');
+    const statusEl=document.getElementById('status'), speedEl=document.getElementById('speed');
+    const hpMeEl=document.getElementById('hpMe'), hpBotEl=document.getElementById('hpBot');
+    const lobby=document.getElementById('lobby'), startBtn=document.getElementById('start');
+    const seedInput=document.getElementById('seed'), shuffleBtn=document.getElementById('shuffle');
+    const modeSel=document.getElementById('mode'), diffSel=document.getElementById('diff');
+    const btnReset=document.getElementById('btnReset'), btnLobby=document.getElementById('btnLobby');
+
+    const input={left:false,right:false,up:false,down:false};
+    let rng, map, me, bot, waypoints=[], botTarget=null, mode='free', duel=false, last=performance.now(), lastRam=0;
+
+    // RNG from seed
+    function xmur3(str){for(var i=0,h=1779033703^str.length;i<str.length;i++)h=Math.imul(h^str.charCodeAt(i),3432918353),h=h<<13|h>>>19;return function(){h=Math.imul(h^h>>>16,2246822507);h=Math.imul(h^h>>>13,3266489909);return (h^=h>>>16)>>>0}}
+    function mulberry32(a){return function(){var t=a+=0x6D2B79F5;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return ((t^t>>>14)>>>0)/4294967296}}
+    const makeRng = seed => mulberry32(xmur3(seed||('s'+Math.random()))());
+
+    function rand(n){return Math.floor(rng()*n);}
+
+    function resize(){
+      const dpr=Math.max(1,Math.min(2,devicePixelRatio||1));
+      cvs.width=Math.floor(innerWidth*dpr); cvs.height=Math.floor(innerHeight*dpr);
+      cvs.style.width='100vw'; cvs.style.height='100vh';
+    }
+    addEventListener('resize', resize, {passive:true});
+
+    // ===== Map (no buildings, no slow zones) =====
+    function genMap(){
+      const grid=new Uint8Array(MAP_W*MAP_H);
+      for(let y=2;y<MAP_H-2;y++){
+        for(let x=2;x<MAP_W-2;x++){
+          if(rng()<ROAD_PROB){ grid[y*MAP_W+x]=1; if(rng()<0.6) grid[y*MAP_W+x+1]=1; if(rng()<0.6) grid[y*MAP_W+x+MAP_W]=1; }
+        }
+      }
+      for(let y=8;y<MAP_H;y+=12) for(let x=2;x<MAP_W-2;x++) grid[y*MAP_W+x]=1;
+      for(let x=8;x<MAP_W;x+=12) for(let y=2;y<MAP_H-2;y++) grid[y*MAP_W+x]=1;
+      // NOTE: buildings removed entirely to avoid hard stops
+      return {grid};
+    }
+    function tileAt(px,py){ const x=Math.floor(px/TILE), y=Math.floor(py/TILE); if(x<0||y<0||x>=MAP_W||y>=MAP_H) return 0; return map.grid[y*MAP_W+x]; }
+    function findStart(){
+      const cx=Math.floor(MAP_W/2), cy=Math.floor(MAP_H/2);
+      for(let r=0;r<Math.max(MAP_W,MAP_H);r++){ for(let dy=-r;dy<=r;dy++){ for(let dx=-r;dx<=r;dx++){
+        const x=cx+dx, y=cy+dy; if(x<0||y<0||x>=MAP_W||y>=MAP_H) continue;
+        if(map.grid[y*MAP_W+x]===1){ return {x:x*TILE+TILE/2,y:y*TILE+TILE/2}; }
+      } } }
+      return {x:cx*TILE,y:cy*TILE};
+    }
+
+    // Waypoints for bot
+    function buildWaypoints(n=30){
+      const list=[]; let tries=0;
+      while(list.length<n && tries++<n*200){
+        const x=2+rand(MAP_W-4), y=2+rand(MAP_H-4);
+        if (map.grid[y*MAP_W+x]===1){
+          let ok=true; for(const p of list){ const dx=p.x-x, dy=p.y-y; if(dx*dx+dy*dy<40){ok=false;break;} }
+          if(ok) list.push({x:(x+0.5)*TILE, y:(y+0.5)*TILE});
+        }
+      }
+      return list;
+    }
+
+    // Cars (race‑car skin drawing)
+    function makeCar(offX=0, palette='red'){
+      const s=findStart();
+      const skins={
+        red:  {body1:'#ff3b3b', body2:'#c0162b', stripe:'#ffffff', accent:'#ffd24d'},
+        blue: {body1:'#30b0ff', body2:'#0c6ab8', stripe:'#ffffff', accent:'#ffd24d'}
+      };
+      const skin=skins[palette]||skins.red;
+      return { x:s.x+offX, y:s.y, angle:0, speed:0, w:50, h:86, hp:START_HP, skin };
+    }
+
+    // Draw race car
+    function drawCar(c){
+      ctx.save();
+      ctx.translate(c.x,c.y);
+      ctx.rotate(c.angle);
+
+      // wheels
+      ctx.fillStyle='#111';
+      const ww=8, wh=18, wx=c.w/2+4, wy=c.h/2-16;
+      ctx.fillRect(-wx, -wy,  ww, wh);
+      ctx.fillRect( wx-ww, -wy, ww, wh);
+      ctx.fillRect(-wx,  wy-wh,  ww, wh);
+      ctx.fillRect( wx-ww,  wy-wh, ww, wh);
+
+      // shadow
+      ctx.globalAlpha=0.20;
+      roundRect(-c.w/2-6,-c.h/2-6,c.w+12,c.h+12,14); ctx.fillStyle='#000'; ctx.fill();
+      ctx.globalAlpha=1;
+
+      // body gradient
+      const g=ctx.createLinearGradient(0,-c.h/2,0,c.h/2);
+      g.addColorStop(0, c.skin.body1);
+      g.addColorStop(1, c.skin.body2);
+      ctx.fillStyle=g;
+      roundRect(-c.w/2,-c.h/2,c.w,c.h,12); ctx.fill();
+
+      // cockpit
+      ctx.fillStyle='rgba(20,30,40,.9)';
+      roundRect(-c.w*0.32,-c.h*0.22,c.w*0.64,c.h*0.30,8); ctx.fill();
+
+      // front splitter
+      ctx.fillStyle='#111';
+      roundRect(-c.w*0.42,-c.h/2-4,c.w*0.84,10,6); ctx.fill();
+
+      // spoiler
+      ctx.fillStyle='#111';
+      roundRect(-c.w*0.46,c.h/2-6,c.w*0.92,8,6); ctx.fill();
+
+      // center stripe
+      ctx.fillStyle=c.skin.stripe;
+      roundRect(-c.w*0.12,-c.h/2+6,c.w*0.24,c.h-12,6); ctx.fill();
+
+      // side accents
+      ctx.fillStyle=c.skin.accent;
+      roundRect(-c.w*0.46,-c.h*0.15,c.w*0.20,c.h*0.08,4); ctx.fill();
+      roundRect( c.w*0.26,-c.h*0.15,c.w*0.20,c.h*0.08,4); ctx.fill();
+
+      ctx.restore();
+    }
+    function roundRect(x,y,w,h,r){ const rr=Math.min(r,w/2,h/2); ctx.beginPath(); ctx.moveTo(x+rr,y);
+      ctx.arcTo(x+w,y,x+w,y+h,rr); ctx.arcTo(x+w,y+h,x,y+h,rr); ctx.arcTo(x,y+h,x,y,rr); ctx.arcTo(x,y,x+w,y,rr); ctx.closePath(); }
+
+    // Physics (uniform, no building collision)
+    function updateCar(c, left,right,up,down,dt){
+      if (up) c.speed += PHYS.accel*dt;
+      if (down) c.speed -= PHYS.brake*dt;
+      if (!up && !down){
+        if (c.speed>0) c.speed=Math.max(0,c.speed-PHYS.friction*dt);
+        else if (c.speed<0) c.speed=Math.min(0,c.speed+PHYS.friction*dt);
+      }
+      c.speed = Math.max(-PHYS.maxSpeed*0.45, Math.min(PHYS.maxSpeed, c.speed));
+
+      const turn=(left?-1:0)+(right?1:0);
+      const sf=Math.max(0, Math.min(1, Math.abs(c.speed)/PHYS.turnSpeedRef));
+      c.angle += turn * PHYS.turnRate * sf * dt;
+
+      const nx = c.x + Math.cos(c.angle)*c.speed*dt;
+      const ny = c.y + Math.sin(c.angle)*c.speed*dt;
+      // No hard stop: pass-through tiles; clamp to world bounds
+      c.x = Math.max(TILE, Math.min(MAP_W*TILE-TILE, nx));
+      c.y = Math.max(TILE, Math.min(MAP_H*TILE-TILE, ny));
+    }
+
+    // Bot logic
+    let botIdx=0;
+    function dist2(a,b){ const dx=a.x-b.x, dy=a.y-b.y; return dx*dx+dy*dy; }
+    function nextWaypoint(from){ if(waypoints.length===0) waypoints=buildWaypoints(30); botIdx=(botIdx+1)%waypoints.length; const t=waypoints[botIdx]; if(dist2(from,t)<8000) return nextWaypoint(from); return t; }
+    function steerTowards(c, tx,ty, k, dt){
+      const desired=Math.atan2(ty-c.y,tx-c.x);
+      let d=((desired-c.angle+Math.PI)%(Math.PI*2))-Math.PI;
+      c.angle += Math.max(-1,Math.min(1,d/(Math.PI/3))) * PHYS.turnRate * k * dt;
+    }
+    function botUpdate(dt){
+      const difficulty=diffSel.value;
+      let targetSpeed=360;
+      if (mode==='duel'){
+        // chase player
+        botTarget={x:me.x,y:me.y};
+        targetSpeed = (difficulty==='hard'? 520 : difficulty==='normal'? 440 : 380);
+      } else {
+        if(!botTarget || dist2(bot,botTarget)<9000) botTarget=nextWaypoint(bot);
+        targetSpeed = (difficulty==='hard'? 420 : difficulty==='normal'? 360 : 300);
+      }
+      steerTowards(bot, botTarget.x, botTarget.y, (difficulty==='easy'? 0.9:1.0), dt);
+      const wantUp = bot.speed < targetSpeed;
+      updateCar(bot, false,false,wantUp,false, dt);
+    }
+
+    // Collision damage (duel only)
+    function handleCollision(){
+      const rad = (me.h*0.5 + bot.h*0.5)*0.55;
+      const dx = me.x - bot.x, dy = me.y - bot.y;
+      const d2 = dx*dx + dy*dy;
+      if (d2 < rad*rad){
+        const now=performance.now();
+        const rel=Math.abs(me.speed-bot.speed);
+        if (now-lastRam>RAM_COOLDOWN && rel>RAM_SPEED_THRESH && duel){
+          lastRam=now;
+          const dmg=(rel-RAM_SPEED_THRESH)*RAM_DAMAGE_K;
+          me.hp=Math.max(0,me.hp-dmg*0.6);
+          bot.hp=Math.max(0,bot.hp-dmg);
+          statusEl.textContent='💥 Impact!';
+        }
+      }
+    }
+
+    // Draw
+    function draw(){
+      const dpr=Math.max(1,Math.min(2,devicePixelRatio||1));
+      const W=cvs.width,H=cvs.height;
+      ctx.setTransform(1,0,0,1,0,0);
+      ctx.clearRect(0,0,W,H);
+      const cx=me.x, cy=me.y;
+      const ox=Math.floor(W/2 - cx*dpr), oy=Math.floor(H/2 - cy*dpr);
+      ctx.setTransform(dpr,0,0,dpr,ox,oy);
+
+      // tiles (roads/grass only)
+      const viewW=W/dpr, viewH=H/dpr;
+      const x0=Math.max(0,Math.floor((cx - viewW/2)/TILE)-2);
+      const y0=Math.max(0,Math.floor((cy - viewH/2)/TILE)-2);
+      const x1=Math.min(MAP_W-1,Math.floor((cx + viewW/2)/TILE)+2);
+      const y1=Math.min(MAP_H-1,Math.floor((cy + viewH/2)/TILE)+2);
+      for(let y=y0;y<=y1;y++){
+        for(let x=x0;x<=x1;x++){
+          const t=map.grid[y*MAP_W+x], px=x*TILE, py=y*TILE;
+          if (t===1){ ctx.fillStyle='#4f4f4f'; ctx.fillRect(px,py,TILE,TILE); ctx.strokeStyle='#cfcfcf33'; ctx.lineWidth=2; ctx.strokeRect(px+2,py+2,TILE-4,TILE-4); }
+          else { ctx.fillStyle='#1f6d2a'; ctx.fillRect(px,py,TILE,TILE); ctx.fillStyle='#2a8736'; ctx.globalAlpha=.25; for(let i=0;i<3;i++){ ctx.fillRect(px+rng()*TILE, py+rng()*TILE, 3,3);} ctx.globalAlpha=1; }
+        }
+      }
+
+      // draw cars
+      if (bot) drawCar(bot);
+      drawCar(me);
+    }
+
+    // Loop
+    function loop(t){
+      const dt=Math.min(0.033,(t-last)/1000); last=t;
+      updateCar(me, input.left,input.right,input.up,input.down, dt);
+      if (bot) botUpdate(dt);
+      if (bot) handleCollision();
+      draw();
+      speedEl.textContent = Math.round(Math.abs(me.speed)*3.6/100);
+      hpMeEl.style.width = (me.hp)+'%'; hpBotEl.style.width = (bot?bot.hp:100)+'%';
+      if (duel){
+        if (me.hp<=0 && bot.hp<=0) statusEl.textContent='ড্র';
+        else if (me.hp<=0) statusEl.textContent='তুমি হেরেছো 😅';
+        else if (bot.hp<=0) statusEl.textContent='তুমি Winner! 🎉';
+      }
+      requestAnimationFrame(loop);
+    }
+
+    // Input
+    document.querySelectorAll('.ctrl').forEach(btn=>{
+      const a=btn.dataset.act; const on=()=>input[a]=true, off=()=>input[a]=false;
+      btn.addEventListener('touchstart',e=>{e.preventDefault();on();},{passive:false});
+      btn.addEventListener('touchend',e=>{e.preventDefault();off();},{passive:false});
+      btn.addEventListener('touchcancel',e=>{e.preventDefault();off();},{passive:false});
+    });
+    addEventListener('keydown',e=>{
+      if(['ArrowLeft','a','A'].includes(e.key)) input.left=true;
+      if(['ArrowRight','d','D'].includes(e.key)) input.right=true;
+      if(['ArrowUp','w','W'].includes(e.key)) input.up=true;
+      if(['ArrowDown','s','S'].includes(e.key)) input.down=true;
+      if(e.key==='Escape') lobby.style.display='flex';
+    });
+    addEventListener('keyup',e=>{
+      if(['ArrowLeft','a','A'].includes(e.key)) input.left=false;
+      if(['ArrowRight','d','D'].includes(e.key)) input.right=false;
+      if(['ArrowUp','w','W'].includes(e.key)) input.up=false;
+      if(['ArrowDown','s','S'].includes(e.key)) input.down=false;
+    });
+
+    // Setup world
+    function setup(seed){
+      rng = makeRng(seed||'solo');
+      map = genMap();
+      waypoints = buildWaypoints(30);
+      me = makeCar(-TILE*2,'red');
+      bot = makeCar(TILE*2,'blue');
+      botTarget=null;
+      me.hp=START_HP; bot.hp=START_HP; lastRam=0;
+    }
+
+    // Buttons
+    btnReset.onclick=()=>{ setup(seedInput.value||'solo'); statusEl.textContent='রিসেট সম্পন্ন'; };
+    btnLobby.onclick=()=>{ lobby.style.display='flex'; };
+
+    // Lobby actions
+    startBtn.onclick=()=>{
+      mode = modeSel.value; duel = (mode==='duel');
+      setup(seedInput.value || 'solo');
+      lobby.style.display='none';
+      statusEl.textContent = (duel? 'Duel vs Bot' : 'Free Drive');
+      requestAnimationFrame(loop);
+    };
+    document.getElementById('how').onclick=()=>{
+      alert('কন্ট্রোল: ⟵⟶ মোড় • গ্যাস/ব্রেক নিচের বোতাম\nPC: WASD/Arrow Keys\nDuel মোডে ধাক্কা দিয়ে বটের HP 0 করুন।');
+    };
+    shuffleBtn.onclick=()=>{ seedInput.value = 'seed' + Math.floor(Math.random()*100000).toString(36); };
+
+    // Init
+    resize();
+    seedInput.value='solo';
+    statusEl.textContent='In Lobby';
+  })();
+  </script>
+</body>
+</html>

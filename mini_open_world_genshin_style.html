@@ -1,0 +1,437 @@
+<!doctype html>
+<html lang="bn">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
+<title>Mini Open World (Genshin‑style Vertical Slice)</title>
+<meta name="theme-color" content="#0a0f1a"/>
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:#0a0f1a;color:#e8f0ff;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;overscroll-behavior:none}
+  canvas{display:block}
+  /* HUD */
+  #hud{position:fixed;left:.75rem;top:.75rem;display:grid;gap:.4rem;z-index:5}
+  .bar{width:220px;height:14px;background:#1b2333;border:1px solid #2d3850;border-radius:10px;overflow:hidden}
+  .hp{height:100%;background:linear-gradient(90deg,#ff4757,#ff7f50)}
+  .st{height:100%;background:linear-gradient(90deg,#2ed573,#7bed9f)}
+  #coins{font-weight:700;opacity:.95}
+  /* Touch controls */
+  #touch{position:fixed;inset:0;pointer-events:none;z-index:6}
+  .stick{position:absolute;left:1rem;bottom:1rem;width:140px;height:140px;border-radius:50%;background:#0006;border:1px solid #334;padding:24px;pointer-events:auto;touch-action:none}
+  .knob{width:92px;height:92px;border-radius:50%;background:#222d3d;border:1px solid #3a4a66}
+  .btns{position:absolute;right:1rem;bottom:1rem;display:grid;gap:.6rem;pointer-events:auto}
+  .btn{min-width:72px;min-height:72px;border-radius:16px;border:1px solid #3a4a66;background:#1a2333;color:#fff;font-weight:800;box-shadow:0 6px 20px #0007;touch-action:none}
+  .btn:active{transform:scale(.97)}
+  .small{min-width:64px;min-height:64px}
+  /* Top menu */
+  #menu{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:radial-gradient(1000px 600px at 70% 20%,#223,#000),linear-gradient(#05070d,#02040a);z-index:9}
+  #menu .panel{width:min(92vw,560px);background:#0e1422;border:1px solid #1b2740;border-radius:14px;padding:16px 18px;box-shadow:0 12px 50px #000c}
+  #menu h1{margin:.2rem 0 .5rem 0;font-size:1.4rem}
+  #menu label{display:block;margin:.6rem 0 .2rem 0;opacity:.9}
+  #menu select,#menu input[type=range]{width:100%;padding:10px;border-radius:10px;border:1px solid #283554;background:#0f182a;color:#fff}
+  #start{margin-top:10px;width:100%;background:#1248ff;border:1px solid #2b5bff;color:#fff;padding:12px;border-radius:12px;font-weight:900}
+  #hint{position:fixed;left:50%;transform:translateX(-50%);bottom:.8rem;background:#0008;border:1px solid #2d3850;padding:.4rem .6rem;border-radius:.5rem;font-size:.9rem;opacity:.9;z-index:4}
+</style>
+</head>
+<body>
+<div id="menu">
+  <div class="panel">
+    <h1>🌌 Mini Open World (Vertical Slice)</h1>
+    <div style="opacity:.85">থার্ড‑পার্সন ক্যামেরা, জাম্প/স্প্রিন্ট/গ্লাইড, লাইট অ্যাটাক, সিম্পল এনেমি AI।</div>
+    <label>কোয়ালিটি</label>
+    <select id="quality">
+      <option value="low">Low (মোবাইল)</option>
+      <option value="med" selected>Medium</option>
+      <option value="high">High</option>
+    </select>
+    <label>ম্যাপ সিড</label>
+    <select id="seed">
+      <option>azure</option><option selected>ember</option><option>jade</option><option>lumen</option><option>terra</option>
+    </select>
+    <label>সময়</label>
+    <input id="tod" type="range" min="0" max="1" step="0.01" value="0.35"/>
+    <button id="start">▶️ Start</button>
+  </div>
+</div>
+
+<div id="hud">
+  <div class="bar"><div id="hp" class="hp" style="width:100%"></div></div>
+  <div class="bar"><div id="st" class="st" style="width:100%"></div></div>
+  <div id="coins">💫 0</div>
+</div>
+
+<div id="touch">
+  <div id="stick" class="stick"><div id="knob" class="knob"></div></div>
+  <div class="btns">
+    <button id="attack" class="btn small">⚔️</button>
+    <button id="jump" class="btn small">🦘</button>
+    <button id="sprint" class="btn">🏃</button>
+    <button id="glide" class="btn">🪂</button>
+  </div>
+</div>
+
+<div id="hint">ক্যামেরা ঘোরাতে স্ক্রিন সোয়াইপ করুন • কিবোর্ড: WASD + Space/Shift/Left‑Click</div>
+
+<script src="https://unpkg.com/three@0.158.0/build/three.min.js"></script>
+<script>
+(()=>{
+  'use strict';
+
+  // ===== Short helpers =====
+  const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+  const lerp=(a,b,t)=>a+(b-a)*t;
+
+  // ===== Input state =====
+  const keys={w:0,a:0,s:0,d:0,space:0,shift:0,mouseDown:0};
+  let yaw=0,pitch=-0.3; // camera angles
+  let lookDZ=0.15; // touch drag deadzone
+
+  // Touch joystick
+  const stick=document.getElementById('stick'), knob=document.getElementById('knob');
+  const stickCenter={x:0,y:0}, joy={x:0,y:0,active:false};
+  function onStickStart(e){
+    joy.active=true;
+    const r=stick.getBoundingClientRect();
+    stickCenter.x=r.left+r.width/2; stickCenter.y=r.top+r.height/2;
+    onStickMove(e);
+  }
+  function onStickMove(e){
+    if(!joy.active) return;
+    const t=(e.touches? e.touches[0]:e);
+    const dx=t.clientX-stickCenter.x, dy=t.clientY-stickCenter.y;
+    const rad=56; // knob radius path
+    const len=Math.hypot(dx,dy); const f=len? Math.min(1, len/rad):0;
+    const nx=dx/(len||1)*f, ny=dy/(len||1)*f;
+    joy.x=nx; joy.y=ny;
+    knob.style.transform=`translate(${nx*rad}px, ${ny*rad}px)`;
+  }
+  function onStickEnd(){ joy.active=false; joy.x=joy.y=0; knob.style.transform='translate(0,0)'; }
+  stick.addEventListener('touchstart', e=>{e.preventDefault(); onStickStart(e);},{passive:false});
+  stick.addEventListener('touchmove', e=>{e.preventDefault(); onStickMove(e);},{passive:false});
+  stick.addEventListener('touchend', e=>{e.preventDefault(); onStickEnd();},{passive:false});
+  // Buttons
+  const btnAttack=document.getElementById('attack');
+  const btnJump=document.getElementById('jump');
+  const btnSprint=document.getElementById('sprint');
+  const btnGlide=document.getElementById('glide');
+  btnAttack.addEventListener('touchstart',e=>{e.preventDefault(); keys.mouseDown=1;},{passive:false});
+  btnAttack.addEventListener('touchend',e=>{e.preventDefault(); keys.mouseDown=0;},{passive:false});
+  btnJump.addEventListener('touchstart',e=>{e.preventDefault(); keys.space=1;},{passive:false});
+  btnJump.addEventListener('touchend',e=>{e.preventDefault(); keys.space=0;},{passive:false});
+  btnSprint.addEventListener('touchstart',e=>{e.preventDefault(); keys.shift=1;},{passive:false});
+  btnSprint.addEventListener('touchend',e=>{e.preventDefault(); keys.shift=0;},{passive:false});
+  btnGlide.addEventListener('touchstart',e=>{e.preventDefault(); gliding=true;},{passive:false});
+  btnGlide.addEventListener('touchend',e=>{e.preventDefault(); gliding=false;},{passive:false});
+
+  // Mouse/keyboard
+  window.addEventListener('keydown',e=>{
+    if(e.key==='w'||e.key==='W'||e.key==='ArrowUp') keys.w=1;
+    if(e.key==='s'||e.key==='S'||e.key==='ArrowDown') keys.s=1;
+    if(e.key==='a'||e.key==='A'||e.key==='ArrowLeft') keys.a=1;
+    if(e.key==='d'||e.key==='D'||e.key==='ArrowRight') keys.d=1;
+    if(e.key===' ') keys.space=1;
+    if(e.key==='Shift') keys.shift=1;
+  });
+  window.addEventListener('keyup',e=>{
+    if(e.key==='w'||e.key==='W'||e.key==='ArrowUp') keys.w=0;
+    if(e.key==='s'||e.key==='S'||e.key==='ArrowDown') keys.s=0;
+    if(e.key==='a'||e.key==='A'||e.key==='ArrowLeft') keys.a=0;
+    if(e.key==='d'||e.key==='D'||e.key==='ArrowRight') keys.d=0;
+    if(e.key===' ') keys.space=0;
+    if(e.key==='Shift') keys.shift=0;
+  });
+  window.addEventListener('mousedown',()=>keys.mouseDown=1);
+  window.addEventListener('mouseup',()=>keys.mouseDown=0);
+
+  // Touch camera drag
+  let lastDrag=null;
+  window.addEventListener('touchstart',e=>{ if(e.target.closest('#touch')) return; lastDrag=e.touches[0]; }, {passive:true});
+  window.addEventListener('touchmove',e=>{
+    if(!lastDrag) return;
+    const t=e.touches[0];
+    const dx=(t.clientX-lastDrag.clientX)/160;
+    const dy=(t.clientY-lastDrag.clientY)/160;
+    if(Math.hypot(dx,dy)>lookDZ){ yaw-=dx; pitch=clamp(pitch-dy, -1.2, 0.6); }
+    lastDrag=t;
+  }, {passive:true});
+  window.addEventListener('touchend',()=>{ lastDrag=null; }, {passive:true});
+
+  // ===== Render setup =====
+  const renderer=new THREE.WebGLRenderer({antialias:true});
+  document.body.appendChild(renderer.domElement);
+  const scene=new THREE.Scene();
+  const camera=new THREE.PerspectiveCamera(60,1,0.1,2000);
+  const ambient=new THREE.HemisphereLight(0x88aaff,0x223344,0.6);
+  scene.add(ambient);
+  const sun=new THREE.DirectionalLight(0xffffff, 1.0);
+  sun.position.set(100,140,60); scene.add(sun);
+
+  // Sky color by time of day slider
+  const tod=document.getElementById('tod');
+  function updateSky(){
+    const t=parseFloat(tod.value);
+    const top=new THREE.Color().lerpColors(new THREE.Color('#0b1a3a'), new THREE.Color('#87b7ff'), t);
+    const bottom=new THREE.Color().lerpColors(new THREE.Color('#02050b'), new THREE.Color('#ffd6a1'), t*0.6);
+    renderer.setClearColor(top, 1);
+    ambient.color.copy(top.clone().multiplyScalar(0.9));
+    sun.color.setHSL(0.12+0.08*t, 0.6, 0.7+0.2*t);
+    sun.position.set(200*Math.cos(t*Math.PI*2), 200*(0.2+0.8*t), 200*Math.sin(t*Math.PI*2));
+  }
+
+  // Resize
+  function resize(){
+    const dpr=Math.min(2, window.devicePixelRatio||1);
+    const w=window.innerWidth, h=window.innerHeight;
+    renderer.setSize(w,h,false);
+    renderer.setPixelRatio(dpr);
+    camera.aspect=w/h; camera.updateProjectionMatrix();
+  }
+  window.addEventListener('resize', resize);
+
+  // ===== Terrain (heightmap) =====
+  // Simple hash-based value noise
+  function hash(x,y){ let s=Math.sin(x*127.1+y*311.7)*43758.5453123; return s-Math.floor(s); }
+  function noise2(x,y){
+    const xi=Math.floor(x), yi=Math.floor(y);
+    const xf=x-xi, yf=y-yi;
+    const tl=hash(xi,yi), tr=hash(xi+1,yi), bl=hash(xi,yi+1), br=hash(xi+1,yi+1);
+    const u=xf*xf*(3-2*xf), v=yf*yf*(3-2*yf);
+    return lerp(lerp(tl,tr,u), lerp(bl,br,u), v);
+  }
+  function fbm(x,y){
+    let f=0, a=0.8, s=0.007, sum=0;
+    for(let i=0;i<5;i++){ sum += noise2(x*s, y*s)*a; a*=0.5; s*=2.0; }
+    return sum;
+  }
+
+  let terrain, terrainGeom, terrainSize=1200, seg=160, heightScale=60, seedMul=1;
+  function makeTerrain(seedStr, quality){
+    // quality presets
+    seg = (quality==='low'? 96 : quality==='med'? 140 : 180);
+    heightScale = (quality==='low'? 45 : quality==='med'? 60 : 80);
+    seedMul = (seedStr==='ember'? 1.3 : seedStr==='jade'? 2.1 : seedStr==='lumen'? 0.9 : seedStr==='terra'? 1.7 : 1.0);
+
+    if(terrain){ scene.remove(terrain); terrain.geometry.dispose(); terrain.material.dispose(); }
+    terrainGeom=new THREE.PlaneGeometry(terrainSize, terrainSize, seg, seg);
+    const pos=terrainGeom.attributes.position;
+    for(let i=0;i<pos.count;i++){
+      const x=pos.getX(i), z=pos.getY(i);
+      const h = fbm(x*seedMul, z*seedMul) * heightScale;
+      pos.setZ(i, h);
+    }
+    pos.needsUpdate=true; terrainGeom.computeVertexNormals();
+    const mat=new THREE.MeshStandardMaterial({
+      color:0x4b7f48, roughness:0.95, metalness:0.0, flatShading:false
+    });
+    terrain=new THREE.Mesh(terrainGeom, mat);
+    terrain.rotation.x=-Math.PI/2;
+    scene.add(terrain);
+  }
+  function sampleHeight(x,z){
+    // bilinear sample on plane grid
+    const grid=seg, half=terrainSize/2, step=terrainSize/grid;
+    const ix = clamp(Math.floor((x+half)/step),0,grid);
+    const iz = clamp(Math.floor((z+half)/step),0,grid);
+    const idx = iz*(grid+1)+ix;
+    return terrainGeom.attributes.position.getZ(idx);
+  }
+
+  // ===== Player & enemies =====
+  const player={pos:new THREE.Vector3(0,40,0), vel:new THREE.Vector3(), yaw:0, onGround:false, hp:100, stamina:100};
+  const playerMesh = new THREE.Mesh(
+    new THREE.CapsuleGeometry(2,5,8,14),
+    new THREE.MeshStandardMaterial({color:0xff6666, roughness:0.6, metalness:0.1})
+  );
+  scene.add(playerMesh);
+
+  const enemyMat=new THREE.MeshStandardMaterial({color:0x66aaff, roughness:0.6, metalness:0.05});
+  const enemies=[];
+  function spawnEnemy(x,z){
+    const m=new THREE.Mesh(new THREE.SphereGeometry(3,22,16), enemyMat.clone());
+    m.position.set(x, sampleHeight(x,z)+3, z);
+    m.userData={hp:30, state:'idle', t:0};
+    scene.add(m); enemies.push(m);
+  }
+  function spawnCoins(n=20){
+    for(let i=0;i<n;i++){
+      const x=(Math.random()-0.5)*terrainSize*0.8;
+      const z=(Math.random()-0.5)*terrainSize*0.8;
+      const y=sampleHeight(x,z)+2;
+      const geo=new THREE.SphereGeometry(1.2, 14, 12);
+      const mat=new THREE.MeshStandardMaterial({emissive:0xffd27a, color:0xfff0c2, roughness:0.2});
+      const c=new THREE.Mesh(geo,mat); c.position.set(x,y,z); c.userData={coin:true, t:Math.random()*6.28};
+      scene.add(c); collectibles.push(c);
+    }
+  }
+
+  // collectibles
+  const collectibles=[]; let coinCount=0; const coinsEl=document.getElementById('coins');
+
+  // Camera follow
+  const camOff=new THREE.Vector3(0, 10, 18);
+
+  // Movement/physics
+  let gliding=false, attackCD=0;
+
+  function update(dt){
+    // camera aim from yaw/pitch
+    player.yaw = yaw;
+
+    // desired move from joystick/keys (local camera space)
+    const mx = (keys.d-keys.a) + joy.x*1.2;
+    const mz = (keys.s-keys.w) + joy.y*1.2;
+    let move=new THREE.Vector2(mx, mz);
+    if(move.length()<0.1) move.set(0,0); else move.normalize();
+
+    // world-space forward/right from yaw
+    const cy=Math.cos(yaw), sy=Math.sin(yaw);
+    const fw=new THREE.Vector3(sy,0,cy);
+    const rt=new THREE.Vector3(cy,0,-sy);
+    const desired = rt.multiplyScalar(move.x).add(fw.multiplyScalar(-move.y));
+
+    // speeds
+    const base=28, sprint=45;
+    const spd = (keys.shift? sprint: base);
+    if(keys.shift && player.stamina>0 && player.onGround){ player.stamina=Math.max(0, player.stamina - 22*dt); }
+    if(!keys.shift && player.onGround) player.stamina=Math.min(100, player.stamina + 15*dt);
+
+    // horizontal acceleration
+    player.vel.x = lerp(player.vel.x, desired.x*spd, 0.12);
+    player.vel.z = lerp(player.vel.z, desired.z*spd, 0.12);
+
+    // gravity & jump
+    const groundY = sampleHeight(player.pos.x, player.pos.z) + 4.0;
+    player.onGround = player.pos.y <= groundY+0.05;
+    const g = -40;
+    if(player.onGround){
+      player.pos.y = groundY;
+      player.vel.y = 0;
+      if(keys.space){ player.vel.y = 16; player.onGround=false; }
+    }else{
+      // glide
+      if(gliding && player.stamina>0){
+        player.vel.y = Math.max(player.vel.y, -5);
+        player.stamina = Math.max(0, player.stamina - 10*dt);
+      }else{
+        player.vel.y += g*dt;
+      }
+      if(!keys.shift) player.stamina=Math.min(100, player.stamina + 8*dt);
+    }
+
+    // apply velocity
+    player.pos.addScaledVector(player.vel, dt);
+    // world bounds
+    player.pos.x=clamp(player.pos.x, -terrainSize*0.48, terrainSize*0.48);
+    player.pos.z=clamp(player.pos.z, -terrainSize*0.48, terrainSize*0.48);
+
+    // player mesh orientation
+    const yawFromVel = Math.atan2(-player.vel.z, player.vel.x) + Math.PI/2;
+    if (desired.length()>0.01) playerMesh.rotation.y = lerp(playerMesh.rotation.y, yawFromVel, 0.3);
+    playerMesh.position.copy(player.pos);
+
+    // camera position
+    const camRotMat = new THREE.Matrix4().makeRotationY(yaw);
+    const off = camOff.clone().applyMatrix4(camRotMat);
+    const camTarget = player.pos.clone().add(new THREE.Vector3(0,3,0));
+    camera.position.copy(camTarget.clone().add(off));
+    camera.lookAt(camTarget);
+
+    // attack
+    attackCD = Math.max(0, attackCD - dt);
+    if(keys.mouseDown && attackCD<=0){
+      attackCD=0.35;
+      // sweep for enemies
+      enemies.forEach(e=>{
+        const d=player.pos.distanceTo(e.position);
+        if(d<5){
+          e.userData.hp -= 12;
+          // knockback
+          const dir=e.position.clone().sub(player.pos).normalize();
+          e.position.addScaledVector(dir, 2.0);
+        }
+      });
+    }
+
+    // enemies AI
+    enemies.forEach(e=>{
+      if(e.userData.hp<=0){ scene.remove(e); e.geometry.dispose(); e.material.dispose(); e.userData.dead=true; }
+      if(e.userData.dead) return;
+      e.userData.t += dt;
+      // chase if near
+      const to=player.pos.clone().sub(e.position); const dist=to.length();
+      if(dist<50){
+        to.normalize();
+        e.position.addScaledVector(to, (dist<6? 0.0: 8.0)*dt);
+        // small hop
+        e.position.y = sampleHeight(e.position.x, e.position.z)+3 + Math.sin(e.userData.t*3)*0.2;
+        // damage player on touch
+        if(dist<3.2){ player.hp = Math.max(0, player.hp - 10*dt); }
+      }else{
+        // idle bob
+        e.position.y = sampleHeight(e.position.x, e.position.z)+3 + Math.sin(e.userData.t*2)*0.3;
+      }
+    });
+
+    // coins
+    collectibles.forEach(c=>{
+      c.userData.t += dt;
+      c.position.y = sampleHeight(c.position.x, c.position.z)+2 + Math.sin(c.userData.t*2)*0.4;
+      if(player.pos.distanceTo(c.position)<3){
+        coinCount++; coinsEl.textContent='💫 '+coinCount;
+        scene.remove(c); c.geometry.dispose(); c.material.dispose(); c.userData.dead=true;
+      }
+    });
+
+    // HUD
+    document.getElementById('hp').style.width = (player.hp)+'%';
+    document.getElementById('st').style.width = (player.stamina)+'%';
+  }
+
+  // Mouse drag camera
+  let dragging=false,lastX=0,lastY=0;
+  renderer.domElement.addEventListener('mousedown',e=>{dragging=true; lastX=e.clientX; lastY=e.clientY;});
+  window.addEventListener('mousemove',e=>{
+    if(!dragging) return;
+    const dx=(e.clientX-lastX)/180;
+    const dy=(e.clientY-lastY)/180;
+    yaw-=dx; pitch=clamp(pitch-dy,-1.2,0.6);
+    lastX=e.clientX; lastY=e.clientY;
+  });
+  window.addEventListener('mouseup',()=>dragging=false);
+
+  // Main loop
+  let last=performance.now();
+  function loop(now){
+    const dt=Math.min(0.033, (now-last)/1000); last=now;
+    updateSky();
+    update(dt);
+    renderer.render(scene,camera);
+    requestAnimationFrame(loop);
+  }
+
+  // Menu start
+  const startBtn=document.getElementById('start');
+  const qualitySel=document.getElementById('quality');
+  const seedSel=document.getElementById('seed');
+  startBtn.addEventListener('click',()=>{
+    const q=qualitySel.value, s=seedSel.value;
+    makeTerrain(s, q);
+    // place player
+    player.pos.set(0, sampleHeight(0,0)+4, 0);
+    player.vel.set(0,0,0); player.hp=100; player.stamina=100;
+    // spawn enemies & coins
+    enemies.slice().forEach(e=>{ if(e){ scene.remove(e);} });
+    enemies.length=0; collectibles.slice().forEach(c=>{ if(c){ scene.remove(c);} }); collectibles.length=0; coinCount=0; coinsEl.textContent='💫 0';
+    for(let i=0;i<8;i++){
+      const x=(Math.random()-0.5)*terrainSize*0.8;
+      const z=(Math.random()-0.5)*terrainSize*0.8;
+      spawnEnemy(x,z);
+    }
+    spawnCoins(30);
+    document.getElementById('menu').style.display='none';
+    resize(); updateSky(); requestAnimationFrame(loop);
+  });
+
+})();</script>
+</body>
+</html>
