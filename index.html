@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Animo — Anime Stream (Lite)</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="style.css" />
+  <script defer src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.min.js"></script>
+  <script defer src="app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <img src="assets/logo.svg" alt="Animo" width="28" height="28"/>
+      <span>Animo</span>
+    </div>
+    <input id="search" class="search" type="search" placeholder="Search anime, episode..." />
+    <nav class="nav">
+      <button data-route="home" class="link active">Home</button>
+      <button data-route="mylist" class="link">My List</button>
+      <button data-route="admin" class="link">Admin</button>
+      <button id="loginBtn" class="link">Login</button>
+    </nav>
+  </header>
+  <main id="view" class="view"></main>
+  <div id="player" class="player hidden" aria-hidden="true">
+    <div class="player__stage">
+      <video id="video" playsinline controls poster="" crossorigin="anonymous"></video>
+      <div class="player__hud">
+        <div class="player__title" id="playerTitle">—</div>
+        <div class="player__actions">
+          <button id="btnClose" class="btn">Close</button>
+          <button id="btnSub" class="btn">Load Subtitles</button>
+        </div>
+      </div>
+      <div class="player__meta">
+        <div class="meta__left">
+          <div class="meta__progress"><span id="progressText">00:00 / 00:00</span></div>
+          <div><strong>Episode:</strong> <span id="epLabel">—</span></div>
+        </div>
+        <div class="meta__right">
+          <button id="btnAddList" class="btn btn--ghost">+ My List</button>
+        </div>
+      </div>
+      <section class="comments">
+        <h3>Comments</h3>
+        <div id="commentList" class="comments__list"></div>
+        <form id="commentForm" class="comments__form">
+          <input id="commentInput" type="text" placeholder="Write a comment..." required />
+          <button class="btn" type="submit">Post</button>
+        </form>
+      </section>
+    </div>
+  </div>
+  <footer class="footer">
+    <div>© 2025 Animo — Demo player using free sample videos. Please stream only content you have rights to.</div>
+  </footer>
+  <template id="cardTpl">
+    <article class="card">
+      <div class="card__img"></div>
+      <div class="card__body">
+        <div class="card__title"></div>
+        <div class="card__meta"></div>
+        <div class="card__actions"></div>
+      </div>
+    </article>
+  </template>
+</body>
+</html>
