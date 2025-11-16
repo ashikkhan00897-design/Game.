@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AniRoll — Watch Anime Online</title>
+  <meta name="description" content="Crunchy‑style static anime site: upload or add remote series and stream with comments, watchlist, continue watching, and simulcast schedule.">
+  <!-- Tailwind via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              DEFAULT: '#f97316', /* orange-500 */
+              dark: '#ea580c',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <!-- Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- hls.js -->
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <style>
+    html,body{min-height:100%}
+    .scrollbar-thin::-webkit-scrollbar{height:8px;width:8px}
+    .scrollbar-thin::-webkit-scrollbar-thumb{background:#00000022;border-radius:9999px}
+    .line-clamp-1{-webkit-line-clamp:1;display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden}
+    .line-clamp-2{-webkit-line-clamp:2;display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden}
+  </style>
+</head>
+<body class="bg-neutral-950 text-neutral-100">
+  <div class="min-h-screen grid grid-rows-[auto,1fr,auto]">
+    <!-- Header -->
+    <header class="sticky top-0 z-40 bg-neutral-950/80 backdrop-blur border-b border-white/10">
+      <div class="max-w-7xl mx-auto px-4 py-3 flex items-center gap-3">
+        <a href="#/home" class="flex items-center gap-2">
+          <span class="inline-grid place-items-center w-8 h-8 rounded-full bg-brand"><i data-lucide="play" class="w-4 h-4"></i></span>
+          <div class="font-extrabold tracking-tight text-xl">AniRoll</div>
+        </a>
+        <nav class="ml-4 hidden md:flex items-center gap-1">
+          <a href="#/browse" class="px-3 py-1.5 rounded-lg hover:bg-white/10">Browse</a>
+          <a href="#/simulcasts" class="px-3 py-1.5 rounded-lg hover:bg-white/10">Simulcasts</a>
+          <a href="#/queue" class="px-3 py-1.5 rounded-lg hover:bg-white/10">My Queue</a>
+          <a href="#/upload" class="px-3 py-1.5 rounded-lg hover:bg-white/10">Upload</a>
+        </nav>
+        <div class="ml-auto max-w-md w-full">
+          <div class="relative">
+            <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 opacity-60"></i>
+            <input id="searchInput" placeholder="Search titles, genres…"
+              class="w-full pl-9 pr-3 py-2 rounded-xl bg-white/5 border border-white/10 placeholder:text-white/50 focus:outline-none focus:ring-2 focus:ring-brand/40">
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main -->
+    <main id="app" class="max-w-7xl mx-auto w-full px-4 py-6"></main>
+
+    <!-- Footer -->
+    <footer class="border-t border-white/10 bg-neutral-950/80">
+      <div class="max-w-7xl mx-auto px-4 py-5 text-sm text-white/70 flex items-center justify-between flex-wrap gap-3">
+        <div>© <span id="year"></span> AniRoll • Demo for learning. Use licensed content only.</div>
+        <div class="flex items-center gap-2">
+          <button onclick="exportLibrary()" class="px-3 py-1.5 rounded-lg border border-white/10 hover:bg-white/10">Export</button>
+          <label class="px-3 py-1.5 rounded-lg border border-white/10 hover:bg-white/10 cursor-pointer">
+            Import<input type="file" accept="application/json" class="hidden" onchange="importLibrary(event)">
+          </label>
+          <a href="#/about" class="px-3 py-1.5 rounded-lg border border-white/10 hover:bg-white/10">About</a>
+        </div>
+      </div>
+    </footer>
+  </div>
+
+  <script>
+    // ---------------- Core utils ----------------
+    const $ = (q, root=document)=>root.querySelector(q);
+    const $$ = (q, root=document)=>Array.from(root.querySelectorAll(q));
+    const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    const toast = (msg)=>{ const d=document.createElement('div'); d.className='fixed bottom-5 left-1/2 -translate-x-1/2 z-[999] rounded-xl bg-white text-black px-4 py-2 text-sm shadow-lg'; d.textContent=msg; document.body.appendChild(d); setTimeout(()=>d.remove(),2000); };
+    const clamp = (v,min,max)=>Math.max(min,Math.min(max,v));
+
+    // ---------------- IndexedDB ----------------
+    const DB_NAME='aniroll_db', DB_VER=2;
+    let db;
+    function openDB(){
+      return new Promise((resolve,reject)=>{
+        const req = indexedDB.open(DB_NAME, DB_VER);
+        req.onupgradeneeded = (e)=>{
+          const db=e.target.result;
+          if(!db.objectStoreNames.contains('shows')){
+            const s=db.createObjectStore('shows',{keyPath:'id'}); // show: {id,title,year,genres[],desc,cover,banner,type:'series'|'movie',episodes:[{id,title,url}],scheduleDay?,createdAt,sourceType:'remote'|'blob', _blob?}
+            s.createIndex('createdAt','createdAt');
+            s.createIndex('title','title');
+          }
+          if(!db.objectStoreNames.contains('comments')) db.createObjectStore('comments',{keyPath:'id'}); // {id, epId, text, ts}
+          if(!db.objectStoreNames.contains('watchlist')) db.createObjectStore('watchlist',{keyPath:'id'}); // show ids
+          if(!db.objectStoreNames.contains('progress')) db.createObjectStore('progress',{keyPath:'id'}); // {id: epId, showId, seconds, duration, updatedAt}
+        };
+        req.onsuccess=(e)=>{db=e.target.result; resolve(db)};
+        req.onerror=(e)=>reject(e.target.error);
+      });
+    }
+    function store(name,mode='readonly'){ return db.transaction([name],mode).objectStore(name); }
+    // shows
+    function saveShow(show){ return new Promise((res,rej)=>{ const r=store('shows','readwrite').put(show); r.onsuccess=()=>res(show); r.onerror=()=>rej(r.error); });}
+    function getShow(id){ return new Promise((res,rej)=>{ const r=store('shows').get(id); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); });}
+    function listShows(){ return new Promise((res,rej)=>{ const r=store('shows').getAll(); r.onsuccess=()=>res(r.result.sort((a,b)=>b.createdAt-a.createdAt)); r.onerror=()=>rej(r.error); });}
+    function deleteShow(id){ return new Promise((res,rej)=>{ const r=store('shows','readwrite').delete(id); r.onsuccess=()=>res(); r.onerror=()=>rej(r.error)});}
+    // comments
+    function commentsFor(epId){ return new Promise((res)=>{ const r=store('comments').getAll(); r.onsuccess=()=>res((r.result||[]).filter(c=>c.epId===epId).sort((a,b)=>b.ts-a.ts)); r.onerror=()=>res([]);} );}
+    function addComment(epId,text){ return new Promise((res,rej)=>{ const c={id:crypto.randomUUID(),epId,text,ts:Date.now()}; const r=store('comments','readwrite').add(c); r.onsuccess=()=>res(c); r.onerror=()=>rej(r.error);} );}
+    // watchlist
+    function getWatchlist(){ return new Promise((res)=>{ const r=store('watchlist').getAll(); r.onsuccess=()=>res((r.result||[]).map(x=>x.id)); r.onerror=()=>res([]);} );}
+    function toggleWatchlist(id){ return new Promise(async(res)=>{ const ids=new Set(await getWatchlist()); if(ids.has(id)){ store('watchlist','readwrite').delete(id).onsuccess=()=>res(false); } else { store('watchlist','readwrite').add({id}).onsuccess=()=>res(true);} });}
+    function inWatchlist(id){ return new Promise((res)=>{ const r=store('watchlist').get(id); r.onsuccess=()=>res(!!r.result); r.onerror=()=>res(false);} );}
+    // progress
+    function setProgress(epId, showId, seconds, duration){ return new Promise((res,rej)=>{ const p={id:epId, showId, seconds, duration, updatedAt:Date.now()}; const r=store('progress','readwrite').put(p); r.onsuccess=()=>res(p); r.onerror=()=>rej(r.error);} );}
+    function getProgress(epId){ return new Promise((res)=>{ const r=store('progress').get(epId); r.onsuccess=()=>res(r.result||null); r.onerror=()=>res(null);} );}
+    function allProgress(){ return new Promise((res)=>{ const r=store('progress').getAll(); r.onsuccess=()=>res(r.result||[]); r.onerror=()=>res([]);} );}
+
+    // ---------------- Router ----------------
+    const router = {
+      async init(){
+        await openDB();
+        window.addEventListener('hashchange',()=>this.render());
+        $('#searchInput').addEventListener('input',()=>this.render());
+        this.render();
+      },
+      go(hash){ location.hash = hash; },
+      get search(){ return ($('#searchInput').value||'').trim().toLowerCase(); },
+      async render(){
+        lucide.createIcons();
+        const hash = location.hash || '#/home';
+        const [_, page, id, extra] = hash.split('/');
+        if(page==='home') return renderHome();
+        if(page==='browse') return renderBrowse();
+        if(page==='upload') return renderUpload();
+        if(page==='watch') return renderWatch(decodeURIComponent(id||''), decodeURIComponent(extra||''));
+        if(page==='queue') return renderQueue();
+        if(page==='simulcasts') return renderSimulcasts();
+        if(page==='about') return renderAbout();
+        return renderNotFound();
+      }
+    };
+
+    // ---------------- UI helpers ----------------
+    const pill = (t)=>`<span class="inline-flex items-center rounded-full border border-white/10 px-2.5 py-0.5 text-xs">${t}</span>`;
+    const pbar = (pct)=>`<div class="h-1 w-full bg-white/10 rounded-full overflow-hidden"><div class="h-full bg-brand" style="width:${pct}%"></div></div>`;
+
+    function showCard(show, opts={}){
+      const ratio = 'aspect-video';
+      const genres = (show.genres||[]).map(pill).join(' ');
+      const cov = show.cover || 'https://images.unsplash.com/photo-1520975538770-2f2c7be3bb07?q=80&w=1200&auto=format&fit=crop';
+      const href = `#/watch/${encodeURIComponent(show.id)}/${encodeURIComponent(show.episodes?.[0]?.id||'')}`;
+      const progressPct = opts.progressPct ?? 0;
+      return `<div class="min-w-[280px] ${ratio} rounded-xl overflow-hidden bg-white/5 border border-white/10 hover:bg-white/10 transition">
+        <div class="relative w-full h-full">
+          <img src="${cov}" alt="${show.title}" class="absolute inset-0 w-full h-full object-cover">
+          <div class="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent"></div>
+          <div class="absolute bottom-0 left-0 right-0 p-3 space-y-2">
+            <div class="font-semibold line-clamp-1">${show.title}</div>
+            ${progressPct>0 ? pbar(progressPct) : ''}
+            <a href="${href}" class="inline-flex items-center gap-2 text-sm text-white/80 hover:text-white underline"><i data-lucide="play-circle" class="w-4 h-4"></i> Open</a>
+          </div>
+        </div>
+      </div>`;
+    }
+
+    async function rowSection(title, list, {calcProgress=false}={}){
+      if(!list.length) return '';
+      let html = `<section class="mb-8"><div class="flex items-center justify-between mb-3"><h3 class="text-lg font-bold">${title}</h3></div>`;
+      html += `<div class="overflow-x-auto scrollbar-thin"><div class="flex gap-3 pr-3">`;
+      if(calcProgress){
+        const prog = await allProgress();
+        const pct = (epId)=>{
+          const p = prog.find(x=>x.id===epId);
+          if(!p||!p.duration) return 0;
+          return clamp(Math.round((p.seconds/p.duration)*100),0,100);
+        };
+        for(const s of list){
+          const epId = s.episodes?.[0]?.id;
+          html += showCard(s, {progressPct: epId?pct(epId):0});
+        }
+      } else {
+        for(const s of list){ html += showCard(s); }
+      }
+      html += `</div></div></section>`;
+      return html;
+    }
+
+    // ---------------- Pages ----------------
+    async function renderHome(){
+      const el = $('#app');
+      const shows = await listShows();
+      const q = router.search;
+      const filtered = q ? shows.filter(s => (s.title||'').toLowerCase().includes(q) || (s.genres||[]).join(' ').toLowerCase().includes(q)) : shows;
+      const featured = filtered[0];
+      el.innerHTML = `
+        <section class="relative overflow-hidden rounded-2xl mb-8 border border-white/10">
+          <img src="${(featured?.banner)||'https://images.unsplash.com/photo-1520975922284-7b683dbac91d?q=80&w=1600&auto=format&fit=crop'}" class="w-full h-64 md:h-96 object-cover" alt="banner">
+          <div class="absolute inset-0 bg-gradient-to-t from-black to-black/20"></div>
+          <div class="absolute bottom-0 left-0 right-0 p-6 md:p-10">
+            <div class="text-sm text-white/70">${featured ? 'Featured' : 'Welcome to AniRoll'}</div>
+            <div class="text-2xl md:text-4xl font-extrabold tracking-tight">${featured?.title || 'Upload or add a remote series to begin'}</div>
+            <div class="mt-4 flex gap-3">
+              <a href="${featured ? `#/watch/${encodeURIComponent(featured.id)}/${encodeURIComponent(featured.episodes?.[0]?.id||'')}` : '#/upload'}" class="px-4 py-2 rounded-lg bg-brand hover:bg-brand-dark text-black font-semibold inline-flex items-center gap-2"><i data-lucide="play" class="w-4 h-4"></i> ${featured ? 'Watch now' : 'Get started'}</a>
+              <a href="#/browse" class="px-4 py-2 rounded-lg border border-white/10 hover:bg-white/10">Browse</a>
+            </div>
+          </div>
+        </section>
+      `;
+      const latest = filtered.slice(0,12);
+      const cont = await continueWatching();
+      const rows = [
+        {title:'Continue Watching', data: cont, progress:true},
+        {title:'Latest Uploads', data: latest},
+      ];
+      for(const r of rows){
+        const html = await rowSection(r.title, r.data, {calcProgress:!!r.progress});
+        el.insertAdjacentHTML('beforeend', html);
+      }
+      lucide.createIcons();
+    }
+
+    async function continueWatching(){
+      const prog = await allProgress();
+      const shows = await listShows();
+      const map = Object.fromEntries(shows.map(s=>[s.id,s]));
+      // pick episodes with 5% to 95% progress
+      const mids = prog.filter(p=>p.duration>0 && (p.seconds/p.duration)>0.05 && (p.seconds/p.duration)<0.95)
+                       .sort((a,b)=>b.updatedAt-a.updatedAt)
+                       .slice(0,12);
+      const uniqueShows = [];
+      const seen = new Set();
+      for(const p of mids){
+        const s = map[p.showId];
+        if(s && !seen.has(s.id)){ uniqueShows.push(s); seen.add(s.id); }
+      }
+      return uniqueShows;
+    }
+
+    async function renderBrowse(){
+      const el = $('#app');
+      const shows = await listShows();
+      const q = router.search;
+      const allGenres = Array.from(new Set(shows.flatMap(s=>s.genres||[]))).sort();
+      let picked = new URL(location.href).searchParams.get('genre') || '';
+      const filtered = shows.filter(s=>{
+        const okText = q ? (s.title||'').toLowerCase().includes(q) || (s.genres||[]).join(' ').toLowerCase().includes(q) : true;
+        const okGenre = picked ? (s.genres||[]).includes(picked) : true;
+        return okText && okGenre;
+      });
+      el.innerHTML = `
+        <div class="mb-4 flex items-center justify-between gap-3">
+          <h2 class="text-xl font-bold">Browse</h2>
+          <div class="flex items-center gap-2 overflow-x-auto scrollbar-thin">
+            <button class="px-3 py-1.5 rounded-full border border-white/10 ${picked===''?'bg-white/10':''}" onclick="location.hash='#/browse'; history.replaceState({},'',location.pathname+location.hash)"><span>All</span></button>
+            ${allGenres.map(g=>`<button class="px-3 py-1.5 rounded-full border border-white/10 ${picked===g?'bg-white/10':''}" onclick="location.hash='#/browse'; const u=new URL(location); u.searchParams.set('genre','${g}'); history.replaceState({},'',u); router.render()">${g}</button>`).join('')}
+          </div>
+        </div>
+        ${filtered.length? `<div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">${filtered.map(s=>showCard(s)).join('')}</div>`
+        : `<div class="text-center opacity-70 py-16"><div class="text-xl font-semibold">No results</div></div>`}
+      `;
+      lucide.createIcons();
+    }
+
+    async function renderQueue(){
+      const el = $('#app');
+      const ids = new Set(await getWatchlist());
+      const shows = (await listShows()).filter(s=>ids.has(s.id));
+      el.innerHTML = `<h2 class="text-xl font-bold mb-4">My Queue</h2>
+        ${shows.length? `<div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">${shows.map(s=>showCard(s)).join('')}</div>`
+        : `<div class="text-center opacity-70 py-16"><div class="text-xl font-semibold">Your queue is empty</div></div>`}`;
+      lucide.createIcons();
+    }
+
+    async function renderSimulcasts(){
+      const el = $('#app');
+      const shows = await listShows();
+      const days = DAYS;
+      const byDay = Object.fromEntries(days.map(d=>[d,[]]));
+      for(const s of shows){
+        if(s.scheduleDay && days.includes(s.scheduleDay)) byDay[s.scheduleDay].push(s);
+      }
+      el.innerHTML = `<h2 class="text-xl font-bold mb-4">Simulcasts</h2>`;
+      const grid = document.createElement('div');
+      grid.className='grid md:grid-cols-2 lg:grid-cols-3 gap-4';
+      for(const d of days){
+        const box = document.createElement('div');
+        box.className='rounded-2xl border border-white/10 bg-white/5 p-4';
+        box.innerHTML = `<div class="font-semibold mb-3">${d}</div>` + (byDay[d].length? byDay[d].map(s=>`
+          <div class="flex items-center gap-3 mb-3 last:mb-0">
+            <img src="${s.cover||''}" class="w-20 h-12 object-cover rounded-lg border border-white/10">
+            <div class="min-w-0">
+              <div class="font-medium line-clamp-1"><a class="hover:underline" href="#/watch/${encodeURIComponent(s.id)}/${encodeURIComponent(s.episodes?.[0]?.id||'')}">${s.title}</a></div>
+              <div class="text-xs text-white/70">${(s.genres||[]).slice(0,3).join(' • ')}</div>
+            </div>
+          </div>
+        `).join('') : `<div class="text-sm text-white/60">No titles scheduled</div>`);
+        grid.appendChild(box);
+      }
+      el.appendChild(grid);
+      lucide.createIcons();
+    }
+
+    async function renderUpload(){
+      const el = $('#app');
+      el.innerHTML = `
+        <div class="grid lg:grid-cols-[2fr,1fr] gap-6">
+          <div class="space-y-6">
+            <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div class="font-bold mb-3">Add Remote Series (MP4 or HLS .m3u8 URLs)</div>
+              <div class="grid md:grid-cols-3 gap-3">
+                <input id="sTitle" class="bg-white/5 border border-white/10 rounded-lg p-2" placeholder="Series title *">
+                <input id="sYear" class="bg-white/5 border border-white/10 rounded-lg p-2" placeholder="Year e.g. 2025">
+                <select id="sDay" class="bg-white/5 border border-white/10 rounded-lg p-2">
+                  <option value="">Release day (optional)</option>
+                  ${DAYS.map(d=>`<option>${d}</option>`).join('')}
+                </select>
+              </div>
+              <div class="grid md:grid-cols-3 gap-3 mt-3">
+                <input id="sGenres" class="bg-white/5 border border-white/10 rounded-lg p-2" placeholder="Genres e.g. Action,Sci‑Fi">
+                <input id="sCover" class="bg-white/5 border border-white/10 rounded-lg p-2" placeholder="Cover image URL (optional)">
+                <input id="sBanner" class="bg-white/5 border border-white/10 rounded-lg p-2" placeholder="Banner image URL (optional)">
+              </div>
+              <textarea id="sDesc" class="bg-white/5 border border-white/10 rounded-lg p-2 mt-3" placeholder="Short description"></textarea>
+              <div class="mt-4">
+                <div class="flex items-center justify-between mb-2">
+                  <div class="font-semibold">Episodes</div>
+                  <button id="addEpBtn" class="px-3 py-1.5 rounded-lg border border-white/10 hover:bg-white/10">Add episode</button>
+                </div>
+                <div id="eps" class="space-y-2"></div>
+                <button id="saveSeriesBtn" class="mt-3 px-4 py-2 rounded-lg bg-brand hover:bg-brand-dark text-black font-semibold">Save series</button>
+              </div>
+            </div>
+
+            <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div class="font-bold mb-3">Upload Single Video (stored locally)</div>
+              <input id="file" type="file" accept="video/mp4,video/webm" class="bg-white/5 border border-white/10 rounded-lg p-2 w-full">
+              <div class="grid md:grid-cols-3 gap-3 mt-3">
+                <input id="vTitle" class="bg-white/5 border border-white/10 rounded-lg p-2" placeholder="Title *">
+                <input id="vYear" class="bg-white/5 border border-white/10 rounded-lg p-2" placeholder="Year">
+                <input id="vGenres" class="bg-white/5 border border-white/10 rounded-lg p-2" placeholder="Genres">
+              </div>
+              <textarea id="vDesc" class="bg-white/5 border border-white/10 rounded-lg p-2 mt-3" placeholder="Short description"></textarea>
+              <button id="saveVideoBtn" class="mt-3 px-4 py-2 rounded-lg bg-brand hover:bg-brand-dark text-black font-semibold">Save video</button>
+              <div class="text-xs text-white/60 mt-2">Note: local uploads stay in this browser. Use Export/Import to move.</div>
+            </div>
+          </div>
+
+          <div class="space-y-6">
+            <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div class="font-semibold mb-2">Tips</div>
+              <ul class="list-disc list-inside text-sm text-white/80 space-y-2">
+                <li>Use <b>.m3u8</b> URLs for adaptive streaming via HLS.</li>
+                <li>Only add content you have the rights to distribute.</li>
+              </ul>
+            </div>
+            <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div class="font-semibold mb-2">Quick Samples</div>
+              <div class="space-y-2 text-sm">
+                <button class="px-3 py-1.5 rounded-lg border border-white/10 hover:bg-white/10" onclick="quickSeries()">Add Sample Series</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+      const eps = $('#eps');
+      function addEpRow(title='',url=''){
+        const id = crypto.randomUUID();
+        const row = document.createElement('div');
+        row.className='grid md:grid-cols-[1fr,1fr,auto] gap-2';
+        row.innerHTML = `
+          <input class="bg-white/5 border border-white/10 rounded-lg p-2" placeholder="Episode title *" value="${title}">
+          <input class="bg-white/5 border border-white/10 rounded-lg p-2" placeholder="https://...mp4 or .m3u8 *" value="${url}">
+          <button class="px-3 py-1.5 rounded-lg border border-white/10 hover:bg-white/10">Remove</button>
+        `;
+        const [t,u,btn]=row.children;
+        btn.onclick=()=>row.remove();
+        eps.appendChild(row);
+      }
+      $('#addEpBtn').onclick = ()=>addEpRow();
+      // Seed with one row
+      addEpRow();
+      $('#saveSeriesBtn').onclick = async ()=>{
+        const title=$('#sTitle').value.trim(); if(!title) return toast('Title required');
+        const episodes = Array.from(eps.children).map(r=>({title:r.children[0].value.trim(), url:r.children[1].value.trim()})).filter(e=>e.title&&e.url).map(e=>({...e, id:crypto.randomUUID()}));
+        if(!episodes.length) return toast('Add at least one episode');
+        const show = {
+          id: crypto.randomUUID(),
+          type:'series',
+          title, year: parseInt($('#sYear').value)||null,
+          genres: ($('#sGenres').value||'').split(',').map(s=>s.trim()).filter(Boolean),
+          description: $('#sDesc').value||'',
+          cover: $('#sCover').value||'',
+          banner: $('#sBanner').value||$('#sCover').value||'',
+          scheduleDay: $('#sDay').value || '',
+          episodes, sourceType:'remote', createdAt: Date.now(),
+        };
+        await saveShow(show);
+        toast('Series saved');
+        router.go(`#/watch/${encodeURIComponent(show.id)}/${encodeURIComponent(show.episodes[0].id)}`);
+      };
+      $('#saveVideoBtn').onclick = async ()=>{
+        const file = $('#file').files[0]; const title=$('#vTitle').value.trim();
+        if(!file || !title) return toast('Select a file and enter a title');
+        const show={ id:crypto.randomUUID(), type:'movie', title, year: parseInt($('#vYear').value)||null,
+          genres: ($('#vGenres').value||'').split(',').map(s=>s.trim()).filter(Boolean),
+          description: $('#vDesc').value||'', cover:'', banner:'', sourceType:'blob', createdAt: Date.now(),
+          episodes:[{id:crypto.randomUUID(), title, url:''}]
+        };
+        show._blob = file; // store in IDB record
+        await new Promise((resolve,reject)=>{ const tx=db.transaction(['shows'],'readwrite'); tx.objectStore('shows').put(show); tx.oncomplete=resolve; tx.onerror=reject; });
+        toast('Video saved'); router.go(`#/watch/${encodeURIComponent(show.id)}/${encodeURIComponent(show.episodes[0].id)}`);
+      };
+      lucide.createIcons();
+    }
+
+    async function quickSeries(){
+      const s={ id:crypto.randomUUID(), type:'series', title:'Star Samurai', year:2024, genres:['Action','Sci‑Fi'], description:'Demo series', cover:'https://images.unsplash.com/photo-1535930749574-1399327ce78f?q=80&w=1200&auto=format&fit=crop', banner:'https://images.unsplash.com/photo-1520975922284-7b683dbac91d?q=80&w=1600&auto=format&fit=crop', scheduleDay:'Friday', sourceType:'remote', createdAt:Date.now(), episodes:[
+        {id:crypto.randomUUID(), title:'Ep 1 – Rust Moon', url:'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4'},
+        {id:crypto.randomUUID(), title:'Ep 2 – Neon Shrine', url:'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4'},
+      ]};
+      await saveShow(s); toast('Sample added'); router.go(`#/watch/${encodeURIComponent(s.id)}/${encodeURIComponent(s.episodes[0].id)}`);
+    }
+
+    async function renderWatch(showId, epId){
+      const el = $('#app');
+      const show = await getShow(showId);
+      if(!show){ el.innerHTML = `<div class="text-center opacity-70 py-16"><div class="text-xl font-semibold">Not found</div></div>`; return; }
+      if(!epId && show.episodes?.[0]) epId = show.episodes[0].id;
+      const ep = (show.episodes||[]).find(e=>e.id===epId) || show.episodes?.[0];
+      const like = await inWatchlist(show.id);
+      const genres = (show.genres||[]).map(pill).join(' ');
+      const epIndex = (show.episodes||[]).findIndex(e=>e.id===ep.id);
+      const prev = show.episodes?.[epIndex-1]; const next = show.episodes?.[epIndex+1];
+      const prog = await getProgress(ep.id);
+      const at = prog?.seconds || 0;
+
+      el.innerHTML = `
+        <button class="mb-4 -ml-2 px-3 py-2 rounded-lg hover:bg-white/10" onclick="history.back()"><span class="inline-flex items-center gap-2"><i data-lucide="chevron-left" class="w-4 h-4"></i> Back</span></button>
+        <div class="grid lg:grid-cols-[2fr,1fr] gap-6">
+          <div class="space-y-3">
+            <div class="w-full rounded-2xl overflow-hidden bg-black border border-white/10">
+              <video id="player" class="w-full h-auto max-h-[70vh]" controls playsinline poster="${show.banner||show.cover||''}"></video>
+            </div>
+            <div class="flex items-center justify-between gap-2 flex-wrap">
+              <div>
+                <div class="text-lg font-semibold">${show.title}</div>
+                <div class="text-sm text-white/70">${ep.title}</div>
+              </div>
+              <div class="flex items-center gap-2">
+                <button id="wlBtn" class="px-3 py-2 rounded-lg border border-white/10 hover:bg-white/10 inline-flex items-center gap-2"><i data-lucide="bookmark" class="w-4 h-4"></i><span>${like?'In Queue':'Add to Queue'}</span></button>
+                <button id="shareBtn" class="px-3 py-2 rounded-lg border border-white/10 hover:bg-white/10 inline-flex items-center gap-2"><i data-lucide="share-2" class="w-4 h-4"></i>Share</button>
+              </div>
+            </div>
+            <div class="flex flex-wrap gap-2">${genres}</div>
+            <p class="text-white/80">${show.description||''}</p>
+            <div class="flex items-center gap-2">
+              <a class="px-3 py-2 rounded-lg border border-white/10 hover:bg-white/10 ${prev?'':'opacity-50 pointer-events-none'}" href="${prev? `#/watch/${encodeURIComponent(show.id)}/${encodeURIComponent(prev.id)}`:'#'}"><i data-lucide="chevron-left" class="w-4 h-4"></i> Prev</a>
+              <a class="px-3 py-2 rounded-lg border border-white/10 hover:bg-white/10 ${next?'':'opacity-50 pointer-events-none'}" href="${next? `#/watch/${encodeURIComponent(show.id)}/${encodeURIComponent(next.id)}`:'#'}">Next <i data-lucide="chevron-right" class="w-4 h-4"></i></a>
+              <label class="ml-auto inline-flex items-center gap-2 text-sm"><input id="autoplay" type="checkbox" class="accent-brand"> Autoplay next</label>
+            </div>
+
+            <section class="space-y-3">
+              <div class="font-semibold">Comments</div>
+              <div class="flex gap-2">
+                <input id="cInput" class="flex-1 bg-white/5 border border-white/10 rounded-lg p-2" placeholder="Write a comment…">
+                <button id="cBtn" class="px-3 py-2 rounded-lg bg-brand text-black font-semibold hover:bg-brand-dark">Post</button>
+              </div>
+              <div id="cList" class="space-y-2"></div>
+            </section>
+          </div>
+
+          <div class="space-y-4">
+            <div class="rounded-2xl border border-white/10 bg-white/5 overflow-hidden">
+              <img src="${show.banner||show.cover||'https://images.unsplash.com/photo-1495231916356-a86217efff12?q=80&w=1600&auto=format&fit=crop'}" class="w-full h-36 object-cover">
+              <div class="p-4">
+                <div class="text-sm text-white/70">Episodes</div>
+                <div class="mt-3 space-y-2" id="epsList"></div>
+              </div>
+            </div>
+            <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div class="text-sm text-white/70">Quick Actions</div>
+              <div class="mt-3 grid gap-2">
+                <a href="#/browse" class="px-3 py-2 rounded-lg border border-white/10 hover:bg-white/10">Browse</a>
+                <a href="#/upload" class="px-3 py-2 rounded-lg border border-white/10 hover:bg-white/10">Add more</a>
+                <button class="px-3 py-2 rounded-lg border border-white/10 hover:bg-white/10" onclick="deleteAndBack('${show.id}')">Delete</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+      // populate episode list
+      const epsList = $('#epsList');
+      (show.episodes||[]).forEach(e=>{
+        const active = e.id===ep.id;
+        const row = document.createElement('a');
+        row.href = `#/watch/${encodeURIComponent(show.id)}/${encodeURIComponent(e.id)}`;
+        row.className = `flex items-center gap-3 p-2 rounded-lg border border-white/10 ${active?'bg-white/10':''}`;
+        row.innerHTML = `<div class="w-9 h-9 rounded bg-white/10 grid place-items-center text-xs font-semibold">${(show.episodes.indexOf(e)+1)}</div>
+                         <div class="min-w-0"><div class="font-medium line-clamp-1">${e.title}</div></div>`;
+        epsList.appendChild(row);
+      });
+
+      // init player
+      const videoEl = $('#player');
+      let hls=null;
+      function attach(src){
+        if(hls){ hls.destroy(); hls=null; }
+        if(src?.endsWith('.m3u8') && window.Hls && Hls.isSupported()){
+          hls=new Hls(); hls.loadSource(src); hls.attachMedia(videoEl);
+        } else {
+          videoEl.src = src;
+        }
+      }
+      if(show.sourceType==='remote'){
+        attach(ep.url);
+      } else if(show.sourceType==='blob' && show._blob){
+        videoEl.src = URL.createObjectURL(show._blob);
+      } else if(show.sourceType==='blob'){
+        const rec = await getShow(show.id);
+        if(rec && rec._blob) videoEl.src = URL.createObjectURL(rec._blob);
+        else toast('Local upload may not persist across refresh. Use Export/Import to migrate.');
+      }
+      // resume
+      if(at>0){ try{ videoEl.currentTime = at; } catch {} }
+      videoEl.addEventListener('timeupdate', ()=> setProgress(ep.id, show.id, videoEl.currentTime, videoEl.duration||0));
+      videoEl.addEventListener('ended', ()=>{
+        setProgress(ep.id, show.id, videoEl.duration||0, videoEl.duration||0);
+        if($('#autoplay').checked && next){
+          router.go(`#/watch/${encodeURIComponent(show.id)}/${encodeURIComponent(next.id)}`);
+        }
+      });
+
+      // comments
+      async function refreshComments(){
+        const list = await commentsFor(ep.id);
+        $('#cList').innerHTML = list.length ? list.map(c=>`<div class="rounded-lg border border-white/10 p-3">
+          <div class="text-sm whitespace-pre-wrap">${c.text}</div>
+          <div class="text-xs text-white/60 mt-1">${new Date(c.ts).toLocaleString()}</div>
+        </div>`).join('') : `<div class="text-sm text-white/70">No comments yet</div>`;
+      }
+      $('#cBtn').onclick = async ()=>{
+        const t = $('#cInput').value.trim(); if(!t) return;
+        await addComment(ep.id,t); $('#cInput').value=''; await refreshComments(); toast('Comment added');
+      };
+      await refreshComments();
+
+      // queue
+      $('#wlBtn').onclick = async ()=>{ const added = await toggleWatchlist(show.id); $('#wlBtn span').textContent = added?'In Queue':'Add to Queue'; };
+
+      // share
+      $('#shareBtn').onclick = async ()=>{
+        const shareUrl = location.origin + location.pathname + `#/watch/${encodeURIComponent(show.id)}/${encodeURIComponent(ep.id)}`;
+        try{ if(navigator.share){ await navigator.share({title:`${show.title} — ${ep.title}`, url:shareUrl}); } else { await navigator.clipboard.writeText(shareUrl); toast('Link copied'); } } catch {}
+      };
+
+      lucide.createIcons();
+    }
+
+    async function deleteAndBack(id){ await deleteShow(id); router.go('#/browse'); toast('Deleted'); }
+
+    function renderAbout(){
+      $('#app').innerHTML = `<div class="prose prose-invert max-w-none">
+        <h2>About AniRoll</h2>
+        <p>A single-file static site inspired by modern anime platforms. Add remote series (HLS/MP4) or upload a local video. Features include:</p>
+        <ul>
+          <li>Crunchy‑style UI: hero, carousels, simulcast view, queue</li>
+          <li>Watch page with autoplay next, progress resume, comments, share</li>
+          <li>Export/Import library (metadata only)</li>
+        </ul>
+        <p><strong>Important:</strong> Only stream content you have rights to distribute.</p>
+      </div>`;
+    }
+
+    function renderNotFound(){
+      $('#app').innerHTML = `<div class="text-center opacity-70 py-16"><div class="text-xl font-semibold">Page not found</div></div>`;
+    }
+
+    // Export/Import metadata (no blobs)
+    async function exportLibrary(){
+      const shows = await listShows();
+      const comments = await new Promise((res)=>{ const r=store('comments').getAll(); r.onsuccess=()=>res(r.result||[]); r.onerror=()=>res([]); });
+      const watch = await getWatchlist();
+      const prog = await allProgress();
+      const data = { shows: shows.map(s=>({...s, _blob: undefined})), comments, watch, progress: prog };
+      const blob = new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+      const url = URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='aniroll_library.json'; a.click(); URL.revokeObjectURL(url);
+      toast('Exported');
+    }
+    async function importLibrary(ev){
+      const f = ev.target.files[0]; if(!f) return;
+      const text = await f.text(); const data = JSON.parse(text);
+      if(data.shows){ for(const s of data.shows){ await saveShow(s); } }
+      if(data.comments){ const rw = store('comments','readwrite'); for(const c of data.comments) rw.put(c); }
+      if(data.watch){ const rw = store('watchlist','readwrite'); for(const id of data.watch) rw.put({id}); }
+      if(data.progress){ const rw = store('progress','readwrite'); for(const p of data.progress) rw.put(p); }
+      toast('Imported'); router.render();
+    }
+
+    // init
+    (async function(){
+      $('#year').textContent = new Date().getFullYear();
+      await router.init();
+    })();
+  </script>
+</body>
+</html>
