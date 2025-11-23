@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+  <meta charset="UTF-8" />
+  <title>Bingo Network | Official Property Hub</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root{
+      --bg:#020617;
+      --card:#020617;
+      --border:#1f2937;
+      --text:#e5e7eb;
+      --muted:#9ca3af;
+      --accent:#38bdf8;
+      --accent-soft:rgba(56,189,248,.18);
+      --shadow:0 18px 40px rgba(15,23,42,.9);
+      --r-lg:16px;
+      --t-fast:.18s ease-out;
+    }
+    *{box-sizing:border-box;margin:0;padding:0;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    body{
+      min-height:100vh;
+      color:var(--text);
+      background:
+        radial-gradient(circle at 10% 0%,rgba(56,189,248,.16),transparent 60%),
+        radial-gradient(circle at 90% 15%,rgba(59,130,246,.16),transparent 55%),
+        var(--bg);
+      overflow-x:hidden;
+      line-height:1.6;
+    }
+    a{text-decoration:none;color:inherit}
+
+    .fade{opacity:0;transform:translateY(18px);animation:fadeUp .7s var(--delay,0s) forwards}
+    @keyframes fadeUp{to{opacity:1;transform:translateY(0)}}
+
+    header{
+      position:sticky;top:0;z-index:20;
+      background:rgba(2,6,23,.96);
+      border-bottom:1px solid var(--border);
+      backdrop-filter:blur(10px);
+    }
+    .nav{
+      max-width:1000px;margin:0 auto;
+      padding:10px 16px;
+      display:flex;align-items:center;justify-content:space-between;gap:10px;
+    }
+    .logo-wrap{display:flex;flex-direction:column;gap:2px}
+    .logo{display:flex;align-items:center;gap:8px;font-size:1rem;font-weight:600;letter-spacing:.09em;text-transform:uppercase}
+    .badge{
+      width:26px;height:26px;border-radius:999px;
+      border:1px solid var(--accent);
+      color:var(--accent);
+      display:flex;align-items:center;justify-content:center;
+      font-size:.76rem;
+      background:radial-gradient(circle at 30% 0,rgba(56,189,248,.2),transparent 60%);
+    }
+    .logo-sub{font-size:.7rem;color:var(--muted)}
+    .nav-links{display:flex;flex-wrap:wrap;gap:12px;font-size:.82rem}
+    .nav-links a{
+      padding:5px 9px;border-radius:999px;
+      border:1px solid transparent;
+      transition:background var(--t-fast),border-color var(--t-fast),transform .12s ease-out;
+    }
+    .nav-links a:hover{
+      background:rgba(15,23,42,.95);
+      border-color:var(--border);
+      transform:translateY(-1px);
+    }
+
+    main{max-width:1000px;margin:0 auto;padding:22px 16px 26px}
+
+    .hero{
+      display:grid;
+      grid-template-columns:minmax(0,1.7fr) minmax(0,1.3fr);
+      gap:24px;align-items:center;
+      margin-bottom:24px;
+    }
+    .tags{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px}
+    .tag{
+      display:inline-flex;align-items:center;gap:6px;
+      padding:3px 10px;border-radius:999px;
+      font-size:.72rem;
+      border:1px solid var(--border);
+      background:rgba(15,23,42,.95);
+      color:var(--muted);
+    }
+    .tag-strong{
+      border-color:var(--accent);
+      background:var(--accent-soft);
+      color:#e0f2fe;
+    }
+    .dot{
+      width:7px;height:7px;border-radius:999px;
+      background:#22c55e;
+      box-shadow:0 0 0 4px rgba(34,197,94,.25);
+    }
+    h1{
+      font-size:clamp(2.1rem,3vw + .5rem,2.7rem);
+      font-weight:700;
+      letter-spacing:-.03em;
+      margin-bottom:10px;
+    }
+    h1 .accent{color:var(--accent)}
+    .subtitle{
+      font-size:.94rem;
+      color:var(--muted);
+      max-width:520px;
+      margin-bottom:16px;
+    }
+    .subtitle strong{color:var(--text);font-weight:500}
+    .meta{
+      display:flex;flex-wrap:wrap;gap:8px;
+      font-size:.78rem;color:var(--muted);
+      margin-bottom:18px;
+    }
+    .meta span{
+      padding:3px 9px;border-radius:999px;
+      border:1px solid var(--border);
+      background:rgba(15,23,42,.9);
+    }
+    .actions{display:flex;flex-wrap:wrap;gap:10px}
+    .btn{
+      padding:8px 15px;border-radius:999px;
+      display:inline-flex;align-items:center;gap:7px;
+      font-size:.86rem;cursor:pointer;
+      transition:background var(--t-fast),border-color var(--t-fast),box-shadow var(--t-fast),transform .13s ease-out,color var(--t-fast);
+      border:1px solid transparent;
+    }
+    .btn-primary{
+      background:linear-gradient(135deg,#38bdf8,#0ea5e9);
+      color:#0b1120;font-weight:500;
+      box-shadow:0 14px 28px rgba(37,99,235,.55);
+    }
+    .btn-primary:hover{
+      transform:translateY(-1px);
+      box-shadow:0 18px 32px rgba(37,99,235,.65);
+    }
+    .btn-ghost{
+      background:rgba(15,23,42,.92);
+      border-color:var(--border);
+      color:var(--text);
+    }
+    .btn-ghost:hover{
+      border-color:var(--accent);
+      background:rgba(15,23,42,1);
+      transform:translateY(-1px);
+    }
+
+    .hero-box{
+      border-radius:var(--r-lg);
+      border:1px solid var(--border);
+      background:radial-gradient(circle at top,rgba(56,189,248,.18),transparent 55%),var(--card);
+      box-shadow:var(--shadow);
+      padding:14px 14px 12px;
+      font-size:.8rem;
+    }
+    .hero-box-header{
+      display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px;
+    }
+    .hero-box h3{font-size:.9rem}
+    .badge-soft{
+      padding:3px 8px;border-radius:999px;
+      border:1px solid var(--accent);
+      font-size:.7rem;
+      color:#e0f2fe;
+      background:rgba(2,6,23,.96);
+    }
+    .hero-box p{color:var(--muted);margin-bottom:8px}
+    .stats{
+      display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;
+    }
+    .stat{
+      border-radius:12px;
+      border:1px solid var(--border);
+      padding:8px;
+      background:rgba(15,23,42,.96);
+      font-size:.76rem;
+    }
+    .stat-label{font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:2px}
+    .stat-value{font-size:.9rem;font-weight:600;margin-bottom:1px}
+    .stat-sub{font-size:.7rem;color:var(--muted)}
+
+    section{margin-bottom:24px}
+    .section-head{
+      display:flex;justify-content:space-between;gap:10px;align-items:flex-end;margin-bottom:10px;
+      position:relative;
+    }
+    .section-title{
+      font-size:.98rem;font-weight:600;position:relative;padding-bottom:2px;
+    }
+    .section-title::after{
+      content:"";position:absolute;left:0;bottom:-3px;
+      width:60px;height:2px;
+      background:linear-gradient(90deg,var(--accent),transparent);
+      opacity:.9;border-radius:999px;
+    }
+    .section-sub{font-size:.78rem;color:var(--muted);max-width:420px}
+
+    .grid-3{
+      display:grid;
+      grid-template-columns:repeat(3,minmax(0,1fr));
+      gap:14px;
+    }
+    .block{
+      border-radius:var(--r-lg);
+      border:1px solid var(--border);
+      background:rgba(2,6,23,.96);
+      box-shadow:0 12px 26px rgba(15,23,42,.85);
+      padding:11px 12px;
+      font-size:.8rem;
+    }
+    .block h3{font-size:.88rem;margin-bottom:4px}
+    .block p{color:var(--muted);margin-bottom:7px}
+    .meta-list{list-style:none;font-size:.78rem;color:var(--muted)}
+    .meta-list li{margin-bottom:3px}
+    .label{color:var(--text);font-weight:500}
+    .pill-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+    .pill{
+      font-size:.74rem;
+      padding:3px 8px;border-radius:999px;
+      border:1px solid var(--border);
+      background:rgba(15,23,42,.98);
+      color:#d1d5db;
+    }
+    .legal-box{
+      border-radius:12px;
+      border:1px dashed var(--border);
+      padding:7px 8px;
+      background:rgba(15,23,42,.96);
+      font-size:.76rem;
+      color:var(--muted);
+    }
+    .legal-box strong{color:var(--text)}
+
+    .card-grid{
+      display:grid;
+      grid-template-columns:repeat(3,minmax(0,1fr));
+      gap:14px;
+    }
+    .card{
+      border-radius:var(--r-lg);
+      border:1px solid var(--border);
+      background:radial-gradient(circle at top left,rgba(56,189,248,.16),transparent 55%),var(--card);
+      padding:12px 12px 10px;
+      font-size:.8rem;
+      box-shadow:var(--shadow);
+      display:flex;flex-direction:column;
+      transition:transform var(--t-fast),box-shadow var(--t-fast),border-color var(--t-fast),background var(--t-fast);
+    }
+    .card:hover{
+      transform:translateY(-5px);
+      box-shadow:0 20px 38px rgba(15,23,42,.95);
+      border-color:rgba(56,189,248,.7);
+      background:radial-gradient(circle at top left,rgba(56,189,248,.23),transparent 60%),var(--card);
+    }
+    .card-top{
+      display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px;
+    }
+    .chip{
+      font-size:.72rem;
+      padding:3px 8px;border-radius:999px;
+      border:1px solid rgba(148,163,184,.7);
+      display:inline-flex;align-items:center;gap:6px;
+      background:rgba(15,23,42,.96);
+      color:#d1d5db;
+    }
+    .dot-sm{width:7px;height:7px;border-radius:999px;background:#22c55e}
+    .own{
+      font-size:.7rem;padding:3px 7px;border-radius:999px;
+      border:1px solid rgba(148,163,184,.7);
+      color:var(--muted);
+      background:rgba(15,23,42,.96);
+      white-space:nowrap;
+    }
+    .card h3{font-size:.9rem;font-weight:600;margin-bottom:3px}
+    .card-meta{font-size:.75rem;color:var(--muted);margin-bottom:6px}
+    .card p{color:#d1d5db;margin-bottom:8px}
+    .card-footer{
+      margin-top:auto;padding-top:6px;
+      border-top:1px dashed rgba(148,163,184,.65);
+      display:flex;justify-content:space-between;align-items:center;
+      font-size:.74rem;color:var(--muted);
+    }
+    .card-footer a{
+      font-size:.76rem;
+      padding:3px 8px;border-radius:999px;
+      border:1px solid rgba(148,163,184,.85);
+      background:rgba(15,23,42,.96);
+      transition:background var(--t-fast),border-color var(--t-fast),transform .12s ease-out;
+    }
+    .card-footer a:hover{
+      border-color:var(--accent);
+      background:rgba(15,23,42,1);
+      transform:translateY(-1px);
+    }
+
+    footer{
+      border-top:1px solid var(--border);
+      padding:11px 16px 14px;
+      font-size:.74rem;
+      text-align:center;
+      color:var(--muted);
+      background:#020617;
+      margin-top:6px;
+    }
+
+    @media(max-width:900px){
+      .hero{grid-template-columns:minmax(0,1fr)}
+      .hero-box{margin-top:10px}
+      .card-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+      .grid-3{grid-template-columns:repeat(2,minmax(0,1fr))}
+    }
+    @media(max-width:640px){
+      .nav{flex-direction:column;align-items:flex-start}
+      main{padding-inline:12px}
+      .card-grid,.grid-3{grid-template-columns:minmax(0,1fr)}
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="nav">
+      <div class="logo-wrap fade" style="--delay:.05s">
+        <div class="logo">
+          <div class="badge">BG</div>
+          <span>Bingo Network</span>
+        </div>
+        <div class="logo-sub">Official & বৈধ সম্পদ — Anime · Minecraft · Store · Community</div>
+      </div>
+      <nav class="nav-links fade" style="--delay:.1s">
+        <a href="#assets">Assets</a>
+        <a href="#overview">Overview</a>
+        <a href="#contact">Contact</a>
+        <a href="#legal">Legal</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <!-- HERO -->
+    <section class="hero">
+      <div class="fade" style="--delay:.12s">
+        <div class="tags">
+          <div class="tag">Anime · Gaming · Community</div>
+          <div class="tag tag-strong">
+            <span class="dot"></span>
+            <span>Bingo Network Official Page</span>
+          </div>
+        </div>
+        <h1><span class="accent">Bingo Network</span> — Official Property Hub</h1>
+        <p class="subtitle">
+          এখানে যা আছে সবই <strong>Bingo Network</strong> এর নিজস্ব ও বৈধ সম্পদ:
+          <strong>ChibiHaven Anime</strong>, <strong>Moonlight SMP server</strong>,
+          <strong>Gaming YouTube channel</strong>, <strong>Chibi Store Discord</strong>।
+          সাথে আছে একটি <strong>Bangla dubbing community</strong>, যা <strong>Animetoon Bangla community</strong> এর সাথে মিলেই build করা হচ্ছে,
+          আর আরও কিছু SMP ও একটি <strong>3D গেম</strong> তৈরির কাজ চলমান।
+        </p>
+        <div class="meta">
+          <span>Owner: Bingo Network</span>
+          <span>Area: Anime · Minecraft · Community</span>
+          <span>Extra: Dubbing · New SMP · 3D Game</span>
+        </div>
+        <div class="actions">
+          <a href="#assets" class="btn btn-primary"><span>📂</span><span>সব সম্পদ দেখুন</span></a>
+          <a href="#legal" class="btn btn-ghost"><span>🛡️</span><span>Legal তথ্য</span></a>
+        </div>
+      </div>
+
+      <aside class="hero-box fade" style="--delay:.18s">
+        <div class="hero-box-header">
+          <h3>Bingo Snapshot</h3>
+          <div class="badge-soft">Internal official list</div>
+        </div>
+        <p>
+          সংক্ষিপ্তভাবে Bingo Network এর প্রধান unit গুলা – anime site, SMP server, dubbing community, store এবং ভবিষ্যতের project গুলার outline।
+        </p>
+        <div class="stats">
+          <div class="stat">
+            <div class="stat-label">Anime Platform</div>
+            <div class="stat-value">ChibiHaven</div>
+            <div class="stat-sub">chibihaven.fun</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Minecraft</div>
+            <div class="stat-value">Moonlight SMP</div>
+            <div class="stat-sub">Official SMP server</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Community</div>
+            <div class="stat-value">Dubbing + Store</div>
+            <div class="stat-sub">Animetoon Bangla & Chibi Store</div>
+          </div>
+        </div>
+      </aside>
+    </section>
+
+    <!-- OVERVIEW -->
+    <section id="overview">
+      <div class="section-head fade" style="--delay:.12s">
+        <div>
+          <div class="section-title">Overview & Structure</div>
+          <p class="section-sub">
+            Anime side, Gaming side, Store/Community side, Bangla dubbing community আর ভবিষ্যতের SMP + 3D game — Bingo Network কীভাবে ভাগ করা আছে তার ছোট overview।
+          </p>
+        </div>
+      </div>
+
+      <div class="grid-3">
+        <div class="block fade" style="--delay:.14s">
+          <h3>🎭 Anime & Media (ChibiHaven)</h3>
+          <p>Anime stream আর related content সব ChibiHaven এর under এ পড়ে।</p>
+          <ul class="meta-list">
+            <li><span class="label">Main Site:</span> ChibiHaven Anime</li>
+            <li><span class="label">URL:</span> chibihaven.fun</li>
+            <li><span class="label">Type:</span> Anime streaming style website</li>
+            <li><span class="label">Dubbing Link:</span> Animetoon Bangla community এর সাথে Bangla dubbing কাজ শেয়ার হয়</li>
+          </ul>
+          <div class="pill-row">
+            <span class="pill">Anime Stream</span>
+            <span class="pill">Bangla Dub (community)</span>
+            <span class="pill">Highlight / Clips</span>
+          </div>
+        </div>
+
+        <div class="block fade" style="--delay:.17s">
+          <h3>🧱 Minecraft & Gaming</h3>
+          <p>
+            Main SMP হল Moonlight SMP, সাথে future plan এ আছে আরও কিছু SMP আর একটি 3D game – সবই Bingo Network gaming side এর অধীনে।
+          </p>
+          <ul class="meta-list">
+            <li><span class="label">Main Server:</span> Moonlight SMP</li>
+            <li><span class="label">Mode:</span> Survival Multiplayer</li>
+            <li><span class="label">Extra SMP:</span> নতুন SMP project গুলো প্রস্তুত হচ্ছে</li>
+            <li><span class="label">3D Game:</span> Bingo Network 3D project (development চলমান)</li>
+            <li><span class="label">Channel:</span> Bingo Gaming (YouTube)</li>
+          </ul>
+          <div class="pill-row">
+            <span class="pill">SMP Events</span>
+            <span class="pill">3D Game Plan</span>
+            <span class="pill">Community Gameplay</span>
+          </div>
+        </div>
+
+        <div class="block fade" id="legal" style="--delay:.2s">
+          <h3>🛡️ Legal & Official Note</h3>
+          <p>শুধু এখানে থাকা নাম, link আর server গুলোকেই Bingo Network এর official সম্পদ হিসেবে ধরা হবে।</p>
+          <div class="legal-box">
+            <strong>Official list (current + pipeline):</strong><br/>
+            • ChibiHaven Anime – chibihaven.fun<br/>
+            • Moonlight SMP – Bingo Minecraft server<br/>
+            • Bingo Gaming YouTube Channel<br/>
+            • Chibi Store – Discord based store<br/>
+            • Bangla Dubbing Community – Animetoon Bangla সহযোগিতায়<br/>
+            • New SMP & 3D Game – under development (Bingo Network)
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ASSETS -->
+    <section id="assets">
+      <div class="section-head fade" style="--delay:.12s">
+        <div>
+          <div class="section-title">Bingo Network Owned & Developing Assets</div>
+          <p class="section-sub">
+            Official ভাবে Bingo Network এর অধীনে থাকা সব জিনিস + যেগুলার কাজ ইতিমধ্যে শুরু হয়ে গেছে (extra SMP, 3D game, dubbing community ইত্যাদি)।
+          </p>
+        </div>
+      </div>
+
+      <div class="card-grid">
+        <!-- Anime site -->
+        <article class="card fade" style="--delay:.13s">
+          <div>
+            <div class="card-top">
+              <div class="chip"><span class="dot-sm"></span><span>Anime Platform</span></div>
+              <div class="own">Official property</div>
+            </div>
+            <h3>ChibiHaven Anime</h3>
+            <div class="card-meta">Website · chibihaven.fun</div>
+            <p>Bingo Network এর অধীনে থাকা anime কেন্দ্রিক website। stream, highlight আর অন্যান্য anime content এটার মাধ্যমে যাবে।</p>
+          </div>
+          <div class="card-footer">
+            <span>Type: Anime stream site</span>
+            <a href="https://chibihaven.fun" target="_blank">Visit website →</a>
+          </div>
+        </article>
+
+        <!-- Main SMP -->
+        <article class="card fade" style="--delay:.16s">
+          <div>
+            <div class="card-top">
+              <div class="chip"><span class="dot-sm"></span><span>Main Minecraft SMP</span></div>
+              <div class="own">Official server</div>
+            </div>
+            <h3>Moonlight SMP</h3>
+            <div class="card-meta">Survival Multiplayer · Community server</div>
+            <p>Bingo Network এর main Minecraft SMP – rules, whitelist, event information আলাদা Discord / page এ handle করা হবে।</p>
+          </div>
+          <div class="card-footer">
+            <span>Server IP: <strong>CHANGE-THIS-IP.com</strong></span>
+            <!-- এখানে real IP বসাও -->
+            <a href="#">Server info →</a>
+          </div>
+        </article>
+
+        <!-- Gaming channel -->
+        <article class="card fade" style="--delay:.19s">
+          <div>
+            <div class="card-top">
+              <div class="chip"><span class="dot-sm"></span><span>Gaming Channel</span></div>
+              <div class="own">Official channel</div>
+            </div>
+            <h3>Bingo Gaming Channel</h3>
+            <div class="card-meta">YouTube · Minecraft & other games</div>
+            <p>Moonlight SMP highlight, challenge video, আর অন্য game content – সবকিছু এই YouTube channel এ central থাকবে।</p>
+          </div>
+          <div class="card-footer">
+            <span>Link: (YouTube URL to add)</span>
+            <a href="#" target="_blank">Visit channel →</a>
+          </div>
+        </article>
+
+        <!-- Chibi Store -->
+        <article class="card fade" style="--delay:.22s">
+          <div>
+            <div class="card-top">
+              <div class="chip"><span class="dot-sm"></span><span>Store & Discord</span></div>
+              <div class="own">Official store</div>
+            </div>
+            <h3>Chibi Store</h3>
+            <div class="card-meta">Discord based store & hub</div>
+            <p>Merch, in-game item, service – future e যেইসব বিক্রি/ডিল হবে সেগুলা Chibi Store Discord এর মাধ্যমে পরিচালনা করা হবে।</p>
+          </div>
+          <div class="card-footer">
+            <span>Join via Discord</span>
+            <a href="https://discord.gg/CPYtCm5ccm" target="_blank">Join Chibi Store →</a>
+          </div>
+        </article>
+
+  
